@@ -9,11 +9,11 @@ use defmt_rtt as _;
 use embassy_executor::Spawner;
 use panic_probe as _;
 
+use timer::BenchmarkTimer;
+
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
     let peripherals = embassy_stm32::init(Default::default());
-
-    let _timer = timer::BenchmarkTimer::new();
     let mut spi = spi::BlockingSpi::new(peripherals);
 
     info!("====================================");
@@ -24,9 +24,19 @@ async fn main(_spawner: Spawner) {
 
     let test_data: [u8; 4] = [0xAA, 0x55, 0x12, 0x34];
 
-    match spi.write(&test_data) {
-        Ok(()) => info!("Blocking SPI write completed"),
-        Err(error) => error!("Blocking SPI write failed: {:?}", error),
+    let timer = BenchmarkTimer::start();
+    let write_result = spi.write(&test_data);
+    let elapsed = timer.elapsed();
+
+    match write_result {
+        Ok(()) => {
+            info!("Blocking SPI write completed");
+            info!("Transferred bytes: {}", test_data.len());
+            info!("Elapsed time: {} us", elapsed.as_micros());
+        }
+        Err(error) => {
+            error!("Blocking SPI write failed: {:?}", error);
+        }
     }
 
     loop {

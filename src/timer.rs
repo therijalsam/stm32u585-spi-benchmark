@@ -1,12 +1,20 @@
-/// Benchmark timer used to measure execution time.
-///
+use embassy_time::{Duration, Instant};
 
-
-pub struct BenchmarkTimer;
+/// Measures elapsed execution time using Embassy's system timer.
+pub struct BenchmarkTimer {
+    started_at: Instant,
+}
 
 impl BenchmarkTimer {
-    /// Creates a new benchmark timer.
-    pub const fn new() -> Self {
-        Self
+    /// Creates and immediately starts a new benchmark timer.
+    pub fn start() -> Self {
+        Self {
+            started_at: Instant::now(),
+        }
+    }
+
+    /// Returns the time elapsed since the timer started.
+    pub fn elapsed(&self) -> Duration {
+        self.started_at.elapsed()
     }
 }

@@ -1,12 +1,12 @@
 use embassy_stm32::Peripherals;
 use embassy_stm32::gpio::{Level, Output, Speed};
 use embassy_stm32::mode::Blocking;
-use embassy_stm32::spi::{Config, Spi};
+use embassy_stm32::spi::{Config, Error, Spi};
 use embassy_stm32::time::Hertz;
 
 pub struct BlockingSpi<'d> {
-    pub spi: Spi<'d, Blocking>,
-    pub chip_select: Output<'d>,
+    spi: Spi<'d, Blocking>,
+    chip_select: Output<'d>,
 }
 
 impl<'d> BlockingSpi<'d> {
@@ -25,5 +25,15 @@ impl<'d> BlockingSpi<'d> {
         );
 
         Self { spi, chip_select }
+    }
+
+    pub fn write(&mut self, data: &[u8]) -> Result<(), Error> {
+        self.chip_select.set_low();
+
+        let result = self.spi.blocking_write(data);
+
+        self.chip_select.set_high();
+
+        result
     }
 }

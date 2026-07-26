@@ -4,6 +4,8 @@ use embassy_stm32::mode::Blocking;
 use embassy_stm32::spi::{Config, Error, Spi};
 use embassy_stm32::time::Hertz;
 
+use crate::transfer::SpiTransfer;
+
 pub struct BlockingSpi<'d> {
     spi: Spi<'d, Blocking>,
     chip_select: Output<'d>,
@@ -27,7 +29,7 @@ impl<'d> BlockingSpi<'d> {
         Self { spi, chip_select }
     }
 
-    pub fn write(&mut self, data: &[u8]) -> Result<(), Error> {
+    fn write_internal(&mut self, data: &[u8]) -> Result<(), Error> {
         self.chip_select.set_low();
 
         let result = self.spi.blocking_write(data);
@@ -35,5 +37,11 @@ impl<'d> BlockingSpi<'d> {
         self.chip_select.set_high();
 
         result
+    }
+}
+
+impl SpiTransfer for BlockingSpi<'_> {
+    fn write(&mut self, data: &[u8]) -> Result<(), Error> {
+        self.write_internal(data)
     }
 }

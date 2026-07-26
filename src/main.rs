@@ -3,6 +3,7 @@
 
 mod spi;
 mod timer;
+mod transfer;
 
 use defmt::{error, info};
 use defmt_rtt as _;
@@ -10,6 +11,7 @@ use embassy_executor::Spawner;
 use panic_probe as _;
 
 use timer::BenchmarkTimer;
+use transfer::SpiTransfer;
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {

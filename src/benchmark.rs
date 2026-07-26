@@ -17,6 +17,16 @@ impl BenchmarkResult {
     pub const fn elapsed_microseconds(&self) -> u64 {
         self.elapsed_microseconds
     }
+    /// Calculates transfer throughput in bytes per second.
+    ///
+    /// Returns `None` when the measured duration is zero.
+    pub fn throughput_bytes_per_second(&self) -> Option<u64> {
+        if self.elapsed_microseconds == 0 {
+            return None;
+        }
+
+        Some((self.transferred_bytes as u64).saturating_mul(1_000_000) / self.elapsed_microseconds)
+    }
 }
 
 pub struct SpiBenchmark;

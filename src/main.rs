@@ -30,6 +30,15 @@ async fn main(_spawner: Spawner) {
             info!("Blocking SPI write completed");
             info!("Transferred bytes: {}", result.transferred_bytes());
             info!("Elapsed time: {} us", result.elapsed_microseconds());
+
+            match result.throughput_bytes_per_second() {
+                Some(throughput) => {
+                    info!("Throughput: {} bytes/s", throughput);
+                }
+                None => {
+                    error!("Unable to calculate throughput: elapsed time is zero");
+                }
+            }
         }
         Err(error) => {
             error!("Blocking SPI write failed: {:?}", error);

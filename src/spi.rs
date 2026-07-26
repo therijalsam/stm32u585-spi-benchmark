@@ -42,6 +42,6 @@ impl<'d> BlockingSpi<'d> {
 
 impl SpiTransfer for BlockingSpi<'_> {
     fn write(&mut self, data: &[u8]) -> Result<(), Error> {
-        self.write_internal(data)
+        self.write_internal(data) //write internal contains hardware specific implementation of the write function.
     }
 }

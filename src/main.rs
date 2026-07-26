@@ -1,17 +1,16 @@
 #![no_std]
 #![no_main]
 
+mod benchmark;
 mod spi;
 mod timer;
 mod transfer;
 
+use benchmark::SpiBenchmark;
 use defmt::{error, info};
 use defmt_rtt as _;
 use embassy_executor::Spawner;
 use panic_probe as _;
-
-use timer::BenchmarkTimer;
-use transfer::SpiTransfer;
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
@@ -24,17 +23,13 @@ async fn main(_spawner: Spawner) {
     info!("SPI1 initialized at 1 MHz");
     info!("====================================");
 
-    let test_data: [u8; 4] = [0xAA, 0x55, 0x12, 0x34];
+    let test_data = [0xAA, 0x55, 0x12, 0x34];
 
-    let timer = BenchmarkTimer::start();
-    let write_result = spi.write(&test_data);
-    let elapsed = timer.elapsed();
-
-    match write_result {
-        Ok(()) => {
+    match SpiBenchmark::run_write(&mut spi, &test_data) {
+        Ok(result) => {
             info!("Blocking SPI write completed");
-            info!("Transferred bytes: {}", test_data.len());
-            info!("Elapsed time: {} us", elapsed.as_micros());
+            info!("Transferred bytes: {}", result.transferred_bytes());
+            info!("Elapsed time: {} us", result.elapsed_microseconds());
         }
         Err(error) => {
             error!("Blocking SPI write failed: {:?}", error);

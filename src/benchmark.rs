@@ -5,33 +5,6 @@ use embassy_stm32::spi::Error;
 use crate::timer::BenchmarkTimer;
 use crate::transfer::SpiTransfer;
 
-/// Result produced by a single SPI write benchmark.
-pub struct BenchmarkResult {
-    transferred_bytes: usize,
-    elapsed_microseconds: u64,
-}
-
-impl BenchmarkResult {
-    pub const fn transferred_bytes(&self) -> usize {
-        self.transferred_bytes
-    }
-
-    pub const fn elapsed_microseconds(&self) -> u64 {
-        self.elapsed_microseconds
-    }
-
-    /// Calculates transfer throughput in bytes per second.
-    ///
-    /// Returns `None` when the measured duration is zero.
-    pub fn throughput_bytes_per_second(&self) -> Option<u64> {
-        if self.elapsed_microseconds == 0 {
-            return None;
-        }
-
-        Some((self.transferred_bytes as u64).saturating_mul(1_000_000) / self.elapsed_microseconds)
-    }
-}
-
 /// Configuration used when running an SPI benchmark.
 pub struct BenchmarkConfig {
     iterations: NonZeroU32,
@@ -88,23 +61,6 @@ impl BenchmarkSummary {
 pub struct SpiBenchmark;
 
 impl SpiBenchmark {
-    /// Measures one SPI write operation.
-    pub fn run_write<T>(transfer: &mut T, data: &[u8]) -> Result<BenchmarkResult, Error>
-    where
-        T: SpiTransfer,
-    {
-        let timer = BenchmarkTimer::start();
-
-        transfer.write(data)?;
-
-        let elapsed = timer.elapsed();
-
-        Ok(BenchmarkResult {
-            transferred_bytes: data.len(),
-            elapsed_microseconds: elapsed.as_micros(),
-        })
-    }
-
     /// Measures repeated SPI write operations.
     pub fn run_repeated_write<T>(
         transfer: &mut T,

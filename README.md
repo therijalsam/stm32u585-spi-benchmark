@@ -100,9 +100,9 @@ Contains the timer used to measure SPI transfer duration.
 
 ### `benchmark.rs`
 
-Contains the benchmark logic and calculations for:
+Contains the benchmark configuration, execution logic, and calculations for:
 
-- iterations
+- benchmark iterations
 - bytes transferred
 - total elapsed time
 - average transfer time

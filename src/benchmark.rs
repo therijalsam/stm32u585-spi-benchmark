@@ -32,6 +32,21 @@ impl BenchmarkResult {
     }
 }
 
+/// Configuration used when running an SPI benchmark.
+pub struct BenchmarkConfig {
+    iterations: NonZeroU32,
+}
+
+impl BenchmarkConfig {
+    pub const fn new(iterations: NonZeroU32) -> Self {
+        Self { iterations }
+    }
+
+    pub const fn iterations(&self) -> NonZeroU32 {
+        self.iterations
+    }
+}
+
 /// Result produced by repeatedly benchmarking an SPI write.
 pub struct BenchmarkSummary {
     iterations: u32,
@@ -94,21 +109,22 @@ impl SpiBenchmark {
     pub fn run_repeated_write<T>(
         transfer: &mut T,
         data: &[u8],
-        iterations: NonZeroU32,
+        config: &BenchmarkConfig,
     ) -> Result<BenchmarkSummary, Error>
     where
         T: SpiTransfer,
     {
+        let iterations = config.iterations().get();
         let timer = BenchmarkTimer::start();
 
-        for _ in 0..iterations.get() {
+        for _ in 0..iterations {
             transfer.write(data)?;
         }
 
         let elapsed = timer.elapsed();
 
         Ok(BenchmarkSummary {
-            iterations: iterations.get(),
+            iterations,
             bytes_per_iteration: data.len(),
             total_elapsed_microseconds: elapsed.as_micros(),
         })

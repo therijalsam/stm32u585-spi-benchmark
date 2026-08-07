@@ -6,7 +6,7 @@ mod spi;
 mod timer;
 mod transfer;
 
-use benchmark::SpiBenchmark;
+use benchmark::{BenchmarkConfig, SpiBenchmark};
 use core::num::NonZeroU32;
 use defmt::{error, info};
 use defmt_rtt as _;
@@ -26,9 +26,10 @@ async fn main(_spawner: Spawner) {
 
     let test_data = [0xAA, 0x55, 0x12, 0x34];
 
-    let iterations = NonZeroU32::new(100).expect("benchmark iterations must be non-zero");
+    let config =
+        BenchmarkConfig::new(NonZeroU32::new(100).expect("benchmark iterations must be non-zero"));
 
-    match SpiBenchmark::run_repeated_write(&mut spi, &test_data, iterations) {
+    match SpiBenchmark::run_repeated_write(&mut spi, &test_data, &config) {
         Ok(result) => {
             info!("Repeated blocking SPI benchmark completed");
 

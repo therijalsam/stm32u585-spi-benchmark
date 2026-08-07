@@ -113,9 +113,7 @@ Contains the benchmark configuration, execution logic, and calculations for:
 
 The current benchmark measures repeated blocking SPI transfers using multiple payload sizes.
 
-The SPI clock is configured at 1 MHz, and each payload is transferred 100 times.
-
-The payloads currently tested are:
+SPI1 is configured at 1 MHz, and each payload is transferred 100 times.
 
 | Payload Size | Iterations | Total Bytes |
 |-------------:|-----------:|------------:|
@@ -124,7 +122,7 @@ The payloads currently tested are:
 | 64 bytes | 100 | 6,400 bytes |
 | 256 bytes | 100 | 25,600 bytes |
 
-Each test buffer is filled with the same byte value:
+Each test buffer contains repeated `0xAA` values:
 
 ```rust
 let data_4 = [0xAA; 4];
@@ -133,28 +131,23 @@ let data_64 = [0xAA; 64];
 let data_256 = [0xAA; 256];
 ```
 
-For each payload size, the firmware reports:
+### Results
 
-- number of iterations
-- total bytes transferred
-- total elapsed time
-- average time per transfer
-- throughput
+One benchmark run produced:
 
-Example output format:
+| Payload | Total Time | Average Time | Throughput |
+|--------:|-----------:|-------------:|-----------:|
+| 4 B | 9,769 us | 97 us | 40,945 bytes/s |
+| 16 B | 27,207 us | 272 us | 58,808 bytes/s |
+| 64 B | 96,888 us | 968 us | 66,055 bytes/s |
+| 256 B | 375,607 us | 3,756 us | 68,156 bytes/s |
 
-```text
-Payload size: 4 bytes
-Iterations: 100
-Total bytes: 400
-Total elapsed time: ...
-Average time per transfer: ...
-Throughput: ... bytes/s
-```
+The results show that throughput increases with larger payload sizes. Smaller
+transfers have proportionally more per-transfer overhead, while larger
+transfers spend a greater percentage of their execution time transmitting data.
 
-The same benchmark is then repeated for 16-byte, 64-byte, and 256-byte payloads.
-
-The measured values may vary between runs depending on hardware conditions and software overhead.
+These measurements represent the current blocking SPI implementation and may
+vary slightly between runs depending on hardware and software conditions.
 
 ## Throughput
 

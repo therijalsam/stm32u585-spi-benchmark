@@ -55,6 +55,7 @@ The SPI clock is currently configured at:
 - SPI transfer timing
 - Throughput calculation
 - Repeated SPI benchmarking
+- Multiple SPI payload size benchmarking
 
 ## Project Structure
 
@@ -110,33 +111,50 @@ Contains the benchmark configuration, execution logic, and calculations for:
 
 ## Current Benchmark
 
-The current test repeatedly writes four bytes over SPI.
+The current benchmark measures repeated blocking SPI transfers using multiple payload sizes.
+
+The SPI clock is configured at 1 MHz, and each payload is transferred 100 times.
+
+The payloads currently tested are:
+
+| Payload Size | Iterations | Total Bytes |
+|-------------:|-----------:|------------:|
+| 4 bytes | 100 | 400 bytes |
+| 16 bytes | 100 | 1,600 bytes |
+| 64 bytes | 100 | 6,400 bytes |
+| 256 bytes | 100 | 25,600 bytes |
+
+Each test buffer is filled with the same byte value:
 
 ```rust
-let test_data = [0xAA, 0x55, 0x12, 0x34];
+let data_4 = [0xAA; 4];
+let data_16 = [0xAA; 16];
+let data_64 = [0xAA; 64];
+let data_256 = [0xAA; 256];
 ```
 
-The transfer is repeated 100 times.
+For each payload size, the firmware reports:
 
-That means:
+- number of iterations
+- total bytes transferred
+- total elapsed time
+- average time per transfer
+- throughput
+
+Example output format:
 
 ```text
-4 bytes × 100 iterations = 400 bytes
-```
-
-One test run produced:
-
-```text
-Repeated blocking SPI benchmark completed
+Payload size: 4 bytes
 Iterations: 100
-Bytes per iteration: 4
 Total bytes: 400
-Total elapsed time: 9040 us
-Average time per transfer: 90 us
-Aggregate throughput: 44247 bytes/s
+Total elapsed time: ...
+Average time per transfer: ...
+Throughput: ... bytes/s
 ```
 
-The numbers may change between runs depending on the hardware and measurement conditions.
+The same benchmark is then repeated for 16-byte, 64-byte, and 256-byte payloads.
+
+The measured values may vary between runs depending on hardware conditions and software overhead.
 
 ## Throughput
 

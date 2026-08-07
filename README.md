@@ -55,6 +55,7 @@ The SPI clock is currently configured at:
 - SPI transfer timing
 - Throughput calculation
 - Repeated SPI benchmarking
+- Multiple SPI payload size benchmarking
 
 ## Project Structure
 
@@ -110,33 +111,43 @@ Contains the benchmark configuration, execution logic, and calculations for:
 
 ## Current Benchmark
 
-The current test repeatedly writes four bytes over SPI.
+The current benchmark measures repeated blocking SPI transfers using multiple payload sizes.
+
+SPI1 is configured at 1 MHz, and each payload is transferred 100 times.
+
+| Payload Size | Iterations | Total Bytes |
+|-------------:|-----------:|------------:|
+| 4 bytes | 100 | 400 bytes |
+| 16 bytes | 100 | 1,600 bytes |
+| 64 bytes | 100 | 6,400 bytes |
+| 256 bytes | 100 | 25,600 bytes |
+
+Each test buffer contains repeated `0xAA` values:
 
 ```rust
-let test_data = [0xAA, 0x55, 0x12, 0x34];
+let data_4 = [0xAA; 4];
+let data_16 = [0xAA; 16];
+let data_64 = [0xAA; 64];
+let data_256 = [0xAA; 256];
 ```
 
-The transfer is repeated 100 times.
+### Results
 
-That means:
+One benchmark run produced:
 
-```text
-4 bytes × 100 iterations = 400 bytes
-```
+| Payload | Total Time | Average Time | Throughput |
+|--------:|-----------:|-------------:|-----------:|
+| 4 B | 9,769 us | 97 us | 40,945 bytes/s |
+| 16 B | 27,207 us | 272 us | 58,808 bytes/s |
+| 64 B | 96,888 us | 968 us | 66,055 bytes/s |
+| 256 B | 375,607 us | 3,756 us | 68,156 bytes/s |
 
-One test run produced:
+The results show that throughput increases with larger payload sizes. Smaller
+transfers have proportionally more per-transfer overhead, while larger
+transfers spend a greater percentage of their execution time transmitting data.
 
-```text
-Repeated blocking SPI benchmark completed
-Iterations: 100
-Bytes per iteration: 4
-Total bytes: 400
-Total elapsed time: 9040 us
-Average time per transfer: 90 us
-Aggregate throughput: 44247 bytes/s
-```
-
-The numbers may change between runs depending on the hardware and measurement conditions.
+These measurements represent the current blocking SPI implementation and may
+vary slightly between runs depending on hardware and software conditions.
 
 ## Throughput
 

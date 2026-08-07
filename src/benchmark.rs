@@ -25,6 +25,8 @@ pub struct BenchmarkSummary {
     iterations: u32,
     bytes_per_iteration: usize,
     total_elapsed_microseconds: u64,
+    min_elapsed_microseconds: u64,
+    max_elapsed_microseconds: u64,
 }
 
 impl BenchmarkSummary {
@@ -55,6 +57,14 @@ impl BenchmarkSummary {
 
         Some(self.total_bytes().saturating_mul(1_000_000) / self.total_elapsed_microseconds)
     }
+
+    pub const fn min_elapsed_microseconds(&self) -> u64 {
+        self.min_elapsed_microseconds
+    }
+
+    pub const fn max_elapsed_microseconds(&self) -> u64 {
+        self.max_elapsed_microseconds
+    }
 }
 
 /// Executes SPI transfer benchmarks.
@@ -71,18 +81,36 @@ impl SpiBenchmark {
         T: SpiTransfer,
     {
         let iterations = config.iterations().get();
-        let timer = BenchmarkTimer::start();
+
+        let total_timer = BenchmarkTimer::start();
 
         for _ in 0..iterations {
             transfer.write(data)?;
         }
 
-        let elapsed = timer.elapsed();
+        let total_elapsed_microseconds = total_timer.elapsed().as_micros();
+
+        let mut min_elapsed_microseconds = u64::MAX;
+        let mut max_elapsed_microseconds = 0;
+
+        for _ in 0..iterations {
+            let transfer_timer = BenchmarkTimer::start();
+
+            transfer.write(data)?;
+
+            let transfer_elapsed = transfer_timer.elapsed().as_micros();
+
+            min_elapsed_microseconds = min_elapsed_microseconds.min(transfer_elapsed);
+
+            max_elapsed_microseconds = max_elapsed_microseconds.max(transfer_elapsed);
+        }
 
         Ok(BenchmarkSummary {
             iterations,
             bytes_per_iteration: data.len(),
-            total_elapsed_microseconds: elapsed.as_micros(),
+            total_elapsed_microseconds,
+            min_elapsed_microseconds,
+            max_elapsed_microseconds,
         })
     }
 }

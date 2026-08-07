@@ -56,6 +56,8 @@ The SPI clock is currently configured at:
 - Throughput calculation
 - Repeated SPI benchmarking
 - Multiple SPI payload size benchmarking
+- Minimum and maximum per-transfer timing
+
 
 ## Project Structure
 
@@ -135,19 +137,20 @@ let data_256 = [0xAA; 256];
 
 One benchmark run produced:
 
-| Payload | Total Time | Average Time | Throughput |
-|--------:|-----------:|-------------:|-----------:|
-| 4 B | 9,769 us | 97 us | 40,945 bytes/s |
-| 16 B | 27,207 us | 272 us | 58,808 bytes/s |
-| 64 B | 96,888 us | 968 us | 66,055 bytes/s |
-| 256 B | 375,607 us | 3,756 us | 68,156 bytes/s |
+| Payload | Total Time | Aggregate Avg / Transfer | Measured Min | Measured Max | Throughput |
+|--------:|-----------:|-------------------------:|-------------:|-------------:|-----------:|
+| 4 B | 10,415 us | 104 us | 113 us | 113 us | 38,406 bytes/s |
+| 16 B | 26,951 us | 269 us | 277 us | 278 us | 59,366 bytes/s |
+| 64 B | 93,035 us | 930 us | 937 us | 978 us | 68,791 bytes/s |
+| 256 B | 357,353 us | 3,573 us | 3,577 us | 3,618 us | 71,637 bytes/s |
 
-The results show that throughput increases with larger payload sizes. Smaller
-transfers have proportionally more per-transfer overhead, while larger
-transfers spend a greater percentage of their execution time transmitting data.
+The aggregate average and throughput are measured using one timer around the
+complete set of repeated SPI transfers.
 
-These measurements represent the current blocking SPI implementation and may
-vary slightly between runs depending on hardware and software conditions.
+Minimum and maximum values are collected separately by timing individual SPI
+transfers. Because individual timing introduces additional measurement
+overhead, the measured minimum can be slightly higher than the aggregate
+average per transfer.
 
 ## Throughput
 

@@ -34,8 +34,18 @@ where
             );
 
             info!(
-                "Average time per transfer: {} us",
+                "Aggregate average time per transfer: {} us",
                 result.average_elapsed_microseconds()
+            );
+
+            info!(
+                "Measured minimum time per transfer: {} us",
+                result.min_elapsed_microseconds()
+            );
+
+            info!(
+                "Measured maximum time per transfer: {} us",
+                result.max_elapsed_microseconds()
             );
 
             match result.throughput_bytes_per_second() {

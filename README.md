@@ -25,6 +25,8 @@ The benchmark focuses on:
 - elapsed Cortex-M core cycles
 - application task concurrency during DMA transfers
 - the crossover between blocking and DMA performance
+- automatic benchmark data export
+- benchmark visualization
 
 The purpose is not only to make SPI communication work, but to understand the
 performance trade-offs between blocking and DMA-backed communication and
@@ -91,6 +93,10 @@ and the actual configured frequency.
 - Blocking vs DMA comparison across SPI clock frequencies
 - Intermediate payload benchmarking around the DMA crossover region
 - Automatic blocking-to-DMA crossover detection
+- Host-side CSV benchmark export
+- Human-readable benchmark table export
+- Automatic throughput graph generation
+- Automatic core-cycle graph generation
 
 ## Project Structure
 
@@ -99,6 +105,21 @@ and the actual configured frequency.
 ├── Cargo.toml
 ├── build.rs
 ├── memory.x
+├── README.md
+├── results
+│   ├── benchmark.csv
+│   ├── benchmark_table.txt
+│   └── graphs
+│       ├── throughput_1mhz.png
+│       ├── throughput_2mhz.png
+│       ├── throughput_4mhz.png
+│       ├── throughput_8mhz.png
+│       ├── cycles_1mhz.png
+│       ├── cycles_2mhz.png
+│       ├── cycles_4mhz.png
+│       └── cycles_8mhz.png
+├── tools
+│   └── capture_csv.py
 └── src
     ├── main.rs
     ├── benchmark.rs
@@ -184,6 +205,20 @@ It calculates:
 - maximum transfer time
 - throughput
 
+### `tools/capture_csv.py`
+
+Runs the firmware using `cargo run`, captures the RTT benchmark output, parses
+the measurements, and exports the benchmark data on the host computer.
+
+The script generates:
+
+- raw CSV benchmark data
+- a human-readable benchmark table
+- throughput graphs
+- elapsed core-cycle graphs
+
+The STM32 itself does not require a filesystem for these exports.
+
 ## Current Benchmark
 
 The benchmark currently tests nine payload sizes.
@@ -212,6 +247,40 @@ size.
 The same payload sizes and iteration count are used for blocking and DMA
 transfers at every SPI clock frequency.
 
+## Benchmark Data
+
+The complete benchmark measurements are stored in the repository.
+
+- [Raw Benchmark CSV](results/benchmark.csv)
+- [Formatted Benchmark Table](results/benchmark_table.txt)
+
+A complete benchmark contains:
+
+```text
+4 SPI frequencies
+×
+9 payload sizes
+×
+2 transfer methods
+=
+72 benchmark measurements
+```
+
+Each CSV row contains:
+
+- SPI frequency
+- transfer method
+- payload size
+- iterations
+- total bytes
+- total elapsed time
+- total elapsed core cycles
+- aggregate average transfer time
+- average core cycles per transfer
+- minimum transfer time
+- maximum transfer time
+- throughput
+
 ## SPI Clock Scaling Results
 
 The following tables summarize representative payload sizes from the latest
@@ -234,6 +303,37 @@ benchmark run.
 | 2 MHz | 85,251 B/s | 169,294 B/s | 224,490 B/s | 239,918 B/s |
 | 4 MHz | 85,070 B/s | 221,514 B/s | 408,919 B/s | 472,307 B/s |
 | 8 MHz | 85,269 B/s | 221,208 B/s | 595,792 B/s | 853,390 B/s |
+
+## Throughput Graphs
+
+The host-side benchmark utility automatically generates throughput graphs for
+each tested SPI frequency.
+
+### 1 MHz
+
+![1 MHz SPI Throughput](results/graphs/throughput_1mhz.png)
+
+At 1 MHz, blocking SPI remains faster than DMA for every payload size tested.
+
+### 2 MHz
+
+![2 MHz SPI Throughput](results/graphs/throughput_2mhz.png)
+
+At 2 MHz, blocking SPI also remains faster throughout the tested payload range.
+
+### 4 MHz
+
+![4 MHz SPI Throughput](results/graphs/throughput_4mhz.png)
+
+At 4 MHz, blocking SPI is faster for the smallest payloads, but DMA becomes
+faster between the tested 16-byte and 24-byte payload sizes.
+
+### 8 MHz
+
+![8 MHz SPI Throughput](results/graphs/throughput_8mhz.png)
+
+At 8 MHz, the same blocking-to-DMA transition occurs between 16 and 24 bytes.
+DMA then scales much more strongly as payload size increases.
 
 ## Blocking vs DMA
 
@@ -384,6 +484,27 @@ At a 16 MHz core clock, 29,998 microseconds corresponds to approximately:
 ```
 
 which closely matches the DWT measurement.
+
+### Core Cycle Graphs
+
+The benchmark utility also generates graphs comparing average elapsed core
+cycles per transfer for blocking and DMA.
+
+#### 1 MHz
+
+![1 MHz Core Cycles](results/graphs/cycles_1mhz.png)
+
+#### 2 MHz
+
+![2 MHz Core Cycles](results/graphs/cycles_2mhz.png)
+
+#### 4 MHz
+
+![4 MHz Core Cycles](results/graphs/cycles_4mhz.png)
+
+#### 8 MHz
+
+![8 MHz Core Cycles](results/graphs/cycles_8mhz.png)
 
 ### Important Interpretation
 
@@ -571,6 +692,43 @@ or approximately:
 4,800 core cycles per transfer
 ```
 
+## Benchmark Export
+
+The benchmark results can be captured automatically on the host computer.
+
+Install Matplotlib:
+
+```bash
+sudo apt install python3-matplotlib
+```
+
+Run:
+
+```bash
+python3 tools/capture_csv.py
+```
+
+The script runs the firmware, captures the RTT output, parses all 72 benchmark
+measurements, and generates:
+
+```text
+results/benchmark.csv
+results/benchmark_table.txt
+
+results/graphs/throughput_1mhz.png
+results/graphs/throughput_2mhz.png
+results/graphs/throughput_4mhz.png
+results/graphs/throughput_8mhz.png
+
+results/graphs/cycles_1mhz.png
+results/graphs/cycles_2mhz.png
+results/graphs/cycles_4mhz.png
+results/graphs/cycles_8mhz.png
+```
+
+The generated CSV, formatted table, and graphs are stored in the repository so
+the measurements used in this README can be inspected directly.
+
 ## Build
 
 Install the Rust target:
@@ -680,6 +838,7 @@ feature/automatic-comparison
 feature/spi-clock-benchmark
 feature/crossover-analysis
 feature/cpu-cycle-measurement
+feature/csv-export
 ```
 
 The README is updated whenever a feature changes the behavior, measurements, or

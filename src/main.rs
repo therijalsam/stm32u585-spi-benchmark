@@ -12,7 +12,7 @@ use defmt::{error, info};
 use defmt_rtt as _;
 use embassy_executor::Spawner;
 use panic_probe as _;
-use transfer::SpiTransfer;
+use transfer::{DmaTransfer, SpiTransfer};
 
 fn run_benchmark<T>(spi: &mut T, data: &[u8], config: &BenchmarkConfig)
 where
@@ -65,6 +65,57 @@ where
     }
 }
 
+async fn run_dma_benchmark<T>(spi: &mut T, data: &[u8], config: &BenchmarkConfig)
+where
+    T: DmaTransfer,
+{
+    match SpiBenchmark::run_repeated_dma_write(spi, data, config).await {
+        Ok(result) => {
+            info!("------------------------------------");
+
+            info!("DMA payload size: {} bytes", result.bytes_per_iteration());
+
+            info!("Iterations: {}", result.iterations());
+
+            info!("Total bytes: {}", result.total_bytes());
+
+            info!(
+                "Total elapsed time: {} us",
+                result.total_elapsed_microseconds()
+            );
+
+            info!(
+                "Aggregate average time per transfer: {} us",
+                result.average_elapsed_microseconds()
+            );
+
+            info!(
+                "Measured minimum time per transfer: {} us",
+                result.min_elapsed_microseconds()
+            );
+
+            info!(
+                "Measured maximum time per transfer: {} us",
+                result.max_elapsed_microseconds()
+            );
+
+            match result.throughput_bytes_per_second() {
+                Some(throughput) => {
+                    info!("DMA throughput: {} bytes/s", throughput);
+                }
+
+                None => {
+                    error!("Unable to calculate DMA throughput: elapsed time is zero");
+                }
+            }
+        }
+
+        Err(error) => {
+            error!("DMA SPI benchmark failed: {:?}", error);
+        }
+    }
+}
+
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
     let peripherals = embassy_stm32::init(Default::default());
@@ -85,6 +136,10 @@ async fn main(_spawner: Spawner) {
     let data_64 = [0xAA; 64];
     let data_256 = [0xAA; 256];
 
+    info!("====================================");
+    info!("Starting blocking SPI benchmarks");
+    info!("====================================");
+
     run_benchmark(&mut spi, &data_4, &config);
     run_benchmark(&mut spi, &data_16, &config);
     run_benchmark(&mut spi, &data_64, &config);
@@ -92,23 +147,16 @@ async fn main(_spawner: Spawner) {
 
     info!("====================================");
     info!("Blocking SPI benchmarks complete");
-    info!("Starting DMA SPI test");
+    info!("Starting DMA SPI benchmarks");
     info!("====================================");
 
-    let dma_test_data = [0xAA; 64];
-
-    match spi.dma_write(&dma_test_data).await {
-        Ok(()) => {
-            info!("DMA SPI write completed");
-            info!("DMA test bytes: {}", dma_test_data.len());
-        }
-
-        Err(error) => {
-            error!("DMA SPI write failed: {:?}", error);
-        }
-    }
+    run_dma_benchmark(&mut spi, &data_4, &config).await;
+    run_dma_benchmark(&mut spi, &data_16, &config).await;
+    run_dma_benchmark(&mut spi, &data_64, &config).await;
+    run_dma_benchmark(&mut spi, &data_256, &config).await;
 
     info!("====================================");
+    info!("DMA SPI benchmarks complete");
     info!("Benchmark complete");
     info!("====================================");
 

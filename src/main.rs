@@ -8,11 +8,24 @@ mod transfer;
 
 use benchmark::{BenchmarkConfig, SpiBenchmark};
 use core::num::NonZeroU32;
+use core::sync::atomic::{AtomicU32, Ordering};
 use defmt::{error, info};
 use defmt_rtt as _;
 use embassy_executor::Spawner;
+use embassy_time::Timer;
 use panic_probe as _;
 use transfer::{DmaTransfer, SpiTransfer};
+
+static CPU_ACTIVITY: AtomicU32 = AtomicU32::new(0);
+
+#[embassy_executor::task]
+async fn cpu_activity_task() {
+    loop {
+        CPU_ACTIVITY.fetch_add(1, Ordering::Relaxed);
+
+        Timer::after_millis(1).await;
+    }
+}
 
 fn run_benchmark<T>(spi: &mut T, data: &[u8], config: &BenchmarkConfig)
 where
@@ -117,10 +130,14 @@ where
 }
 
 #[embassy_executor::main]
-async fn main(_spawner: Spawner) {
+async fn main(spawner: Spawner) {
     let peripherals = embassy_stm32::init(Default::default());
 
     let mut spi = spi::BenchmarkSpi::new(peripherals);
+
+    spawner.spawn(cpu_activity_task()).unwrap();
+
+    Timer::after_millis(10).await;
 
     info!("====================================");
     info!("STM32U585 SPI Benchmark");
@@ -136,6 +153,8 @@ async fn main(_spawner: Spawner) {
     let data_64 = [0xAA; 64];
     let data_256 = [0xAA; 256];
 
+    CPU_ACTIVITY.store(0, Ordering::Relaxed);
+
     info!("====================================");
     info!("Starting blocking SPI benchmarks");
     info!("====================================");
@@ -144,6 +163,15 @@ async fn main(_spawner: Spawner) {
     run_benchmark(&mut spi, &data_16, &config);
     run_benchmark(&mut spi, &data_64, &config);
     run_benchmark(&mut spi, &data_256, &config);
+
+    let blocking_cpu_activity = CPU_ACTIVITY.load(Ordering::Relaxed);
+
+    info!(
+        "CPU worker progress during blocking: {}",
+        blocking_cpu_activity
+    );
+
+    CPU_ACTIVITY.store(0, Ordering::Relaxed);
 
     info!("====================================");
     info!("Blocking SPI benchmarks complete");
@@ -154,6 +182,10 @@ async fn main(_spawner: Spawner) {
     run_dma_benchmark(&mut spi, &data_16, &config).await;
     run_dma_benchmark(&mut spi, &data_64, &config).await;
     run_dma_benchmark(&mut spi, &data_256, &config).await;
+
+    let dma_cpu_activity = CPU_ACTIVITY.load(Ordering::Relaxed);
+
+    info!("CPU worker progress during DMA: {}", dma_cpu_activity);
 
     info!("====================================");
     info!("DMA SPI benchmarks complete");

@@ -61,6 +61,7 @@ The SPI clock is currently configured at:
 - Throughput calculation
 - Blocking vs DMA performance comparison
 - CPU task concurrency during DMA transfers
+- Automatic blocking vs DMA throughput comparison
 
 ## Project Structure
 
@@ -81,6 +82,7 @@ The SPI clock is currently configured at:
 
 Initializes the STM32 peripherals, creates the SPI driver, runs the blocking and
 DMA benchmarks, measures background task progress during each transfer method,
+automatically compares blocking and DMA throughput for each payload size
 and prints the results through `defmt`.
 
 ### `spi.rs`
@@ -196,23 +198,68 @@ At larger payload sizes, DMA becomes significantly faster. For the 64-byte trans
 
 With the current implementation, the performance crossover between blocking and DMA occurs somewhere between 16 and 64 bytes.
 
+### Automatic Comparison
+
+The firmware automatically compares blocking and DMA throughput after both
+benchmark sets complete.
+
+For each payload size, it reports:
+
+- blocking throughput
+- DMA throughput
+- the faster transfer method
+- approximate throughput improvement
+
+A run with the background concurrency task enabled produced:
+
+| Payload | Blocking Throughput | DMA Throughput | Faster Method | Throughput Improvement |
+|--------:|--------------------:|---------------:|:--------------|-----------------------:|
+| 4 B | 38,413 bytes/s | 21,343 bytes/s | Blocking | 79% |
+| 16 B | 59,364 bytes/s | 49,280 bytes/s | Blocking | 20% |
+| 64 B | 68,792 bytes/s | 98,010 bytes/s | DMA | 42% |
+| 256 B | 71,646 bytes/s | 114,726 bytes/s | DMA | 60% |
+
+The results show a clear change in which transfer method performs better as
+payload size increases.
+
+For 4-byte and 16-byte transfers, blocking SPI provides higher throughput.
+For 64-byte and 256-byte transfers, DMA provides higher throughput.
+
+With the payload sizes currently tested, the performance crossover occurs
+between 16 and 64 bytes.
+
+These measurements were collected while the background Embassy task was
+enabled. Because that task executes concurrently with DMA transfers, the DMA
+throughput values can be slightly lower than the baseline throughput results
+measured without the concurrency workload.
+
 ## CPU Concurrency Test
 
-In addition to measuring transfer speed, the benchmark also checks whether
-other application work can make progress while SPI communication is running.
+In addition to transfer performance, the firmware checks whether another
+application task can make progress while SPI communication is active.
 
 A background Embassy task increments a counter approximately once every
-millisecond:
+millisecond.
 
-```rust
-#[embassy_executor::task]
-async fn cpu_activity_task() {
-    loop {
-        CPU_ACTIVITY.fetch_add(1, Ordering::Relaxed);
+One test run produced:
 
-        Timer::after_millis(1).await;
-    }
-}
+| Transfer Method | Background Task Progress |
+|:----------------|-------------------------:|
+| Blocking SPI | 0 |
+| DMA SPI | 553 |
+
+During the blocking SPI benchmark, the background task made no progress because
+the blocking transfers kept control of the executor.
+
+During the DMA-backed asynchronous benchmark, the background task executed 553
+times while SPI communication was in progress.
+
+This demonstrates that DMA-backed asynchronous SPI allows other Embassy tasks
+to make progress while a transfer is being handled by DMA.
+
+The counter is not a CPU utilization percentage. It only indicates whether
+another task was able to execute during the benchmark.
+
 
 ## Timing Method
 

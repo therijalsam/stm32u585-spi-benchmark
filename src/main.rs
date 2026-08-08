@@ -27,7 +27,7 @@ async fn cpu_activity_task() {
     }
 }
 
-fn run_benchmark<T>(spi: &mut T, data: &[u8], config: &BenchmarkConfig)
+fn run_benchmark<T>(spi: &mut T, data: &[u8], config: &BenchmarkConfig) -> Option<u64>
 where
     T: SpiTransfer,
 {
@@ -61,7 +61,9 @@ where
                 result.max_elapsed_microseconds()
             );
 
-            match result.throughput_bytes_per_second() {
+            let throughput = result.throughput_bytes_per_second();
+
+            match throughput {
                 Some(throughput) => {
                     info!("Throughput: {} bytes/s", throughput);
                 }
@@ -70,15 +72,18 @@ where
                     error!("Unable to calculate throughput: elapsed time is zero");
                 }
             }
+
+            throughput
         }
 
         Err(error) => {
             error!("SPI benchmark failed: {:?}", error);
+            None
         }
     }
 }
 
-async fn run_dma_benchmark<T>(spi: &mut T, data: &[u8], config: &BenchmarkConfig)
+async fn run_dma_benchmark<T>(spi: &mut T, data: &[u8], config: &BenchmarkConfig) -> Option<u64>
 where
     T: DmaTransfer,
 {
@@ -112,7 +117,9 @@ where
                 result.max_elapsed_microseconds()
             );
 
-            match result.throughput_bytes_per_second() {
+            let throughput = result.throughput_bytes_per_second();
+
+            match throughput {
                 Some(throughput) => {
                     info!("DMA throughput: {} bytes/s", throughput);
                 }
@@ -121,10 +128,55 @@ where
                     error!("Unable to calculate DMA throughput: elapsed time is zero");
                 }
             }
+
+            throughput
         }
 
         Err(error) => {
             error!("DMA SPI benchmark failed: {:?}", error);
+            None
+        }
+    }
+}
+
+fn print_comparison(
+    payload_size: usize,
+    blocking_throughput: Option<u64>,
+    dma_throughput: Option<u64>,
+) {
+    info!("------------------------------------");
+    info!("Comparison for {} byte payload", payload_size);
+
+    match (blocking_throughput, dma_throughput) {
+        (Some(blocking), Some(dma)) => {
+            info!("Blocking throughput: {} bytes/s", blocking);
+            info!("DMA throughput: {} bytes/s", dma);
+
+            if blocking == 0 || dma == 0 {
+                error!("Unable to calculate throughput improvement");
+                return;
+            }
+
+            if dma > blocking {
+                let improvement = (dma - blocking).saturating_mul(100) / blocking;
+
+                info!("Faster method: DMA");
+                info!("DMA throughput improvement: {}%", improvement);
+            } else if blocking > dma {
+                let improvement = (blocking - dma).saturating_mul(100) / dma;
+
+                info!("Faster method: Blocking");
+                info!("Blocking throughput improvement: {}%", improvement);
+            } else {
+                info!("Faster method: Equal");
+            }
+        }
+
+        _ => {
+            error!(
+                "Unable to compare transfer methods for {} byte payload",
+                payload_size
+            );
         }
     }
 }
@@ -159,10 +211,13 @@ async fn main(spawner: Spawner) {
     info!("Starting blocking SPI benchmarks");
     info!("====================================");
 
-    run_benchmark(&mut spi, &data_4, &config);
-    run_benchmark(&mut spi, &data_16, &config);
-    run_benchmark(&mut spi, &data_64, &config);
-    run_benchmark(&mut spi, &data_256, &config);
+    let blocking_4 = run_benchmark(&mut spi, &data_4, &config);
+
+    let blocking_16 = run_benchmark(&mut spi, &data_16, &config);
+
+    let blocking_64 = run_benchmark(&mut spi, &data_64, &config);
+
+    let blocking_256 = run_benchmark(&mut spi, &data_256, &config);
 
     let blocking_cpu_activity = CPU_ACTIVITY.load(Ordering::Relaxed);
 
@@ -178,14 +233,26 @@ async fn main(spawner: Spawner) {
     info!("Starting DMA SPI benchmarks");
     info!("====================================");
 
-    run_dma_benchmark(&mut spi, &data_4, &config).await;
-    run_dma_benchmark(&mut spi, &data_16, &config).await;
-    run_dma_benchmark(&mut spi, &data_64, &config).await;
-    run_dma_benchmark(&mut spi, &data_256, &config).await;
+    let dma_4 = run_dma_benchmark(&mut spi, &data_4, &config).await;
+
+    let dma_16 = run_dma_benchmark(&mut spi, &data_16, &config).await;
+
+    let dma_64 = run_dma_benchmark(&mut spi, &data_64, &config).await;
+
+    let dma_256 = run_dma_benchmark(&mut spi, &data_256, &config).await;
 
     let dma_cpu_activity = CPU_ACTIVITY.load(Ordering::Relaxed);
 
     info!("CPU worker progress during DMA: {}", dma_cpu_activity);
+
+    info!("====================================");
+    info!("Blocking vs DMA comparison");
+    info!("====================================");
+
+    print_comparison(4, blocking_4, dma_4);
+    print_comparison(16, blocking_16, dma_16);
+    print_comparison(64, blocking_64, dma_64);
+    print_comparison(256, blocking_256, dma_256);
 
     info!("====================================");
     info!("DMA SPI benchmarks complete");

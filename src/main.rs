@@ -2,6 +2,7 @@
 #![no_main]
 
 mod benchmark;
+mod cycle_counter;
 mod spi;
 mod timer;
 mod transfer;
@@ -9,6 +10,7 @@ mod transfer;
 use benchmark::{BenchmarkConfig, SpiBenchmark};
 use core::num::NonZeroU32;
 use core::sync::atomic::{AtomicU32, Ordering};
+use cycle_counter::CycleCounter;
 use defmt::{error, info};
 use defmt_rtt as _;
 use embassy_executor::Spawner;
@@ -48,6 +50,16 @@ where
             info!(
                 "Total elapsed time: {} us",
                 result.total_elapsed_microseconds()
+            );
+
+            info!(
+                "Total elapsed core cycles: {}",
+                result.total_elapsed_cycles()
+            );
+
+            info!(
+                "Average core cycles per transfer: {}",
+                result.average_cycles_per_transfer()
             );
 
             info!(
@@ -105,6 +117,16 @@ where
             info!(
                 "Total elapsed time: {} us",
                 result.total_elapsed_microseconds()
+            );
+
+            info!(
+                "Total elapsed core cycles: {}",
+                result.total_elapsed_cycles()
+            );
+
+            info!(
+                "Average core cycles per transfer: {}",
+                result.average_cycles_per_transfer()
             );
 
             info!(
@@ -343,6 +365,8 @@ async fn run_clock_benchmark(
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
+    CycleCounter::initialize();
+
     let mut mcu_config = embassy_stm32::Config::default();
 
     mcu_config.rcc.hsi = true;
@@ -360,6 +384,7 @@ async fn main(spawner: Spawner) {
     info!("====================================");
     info!("STM32U585 SPI Benchmark");
     info!("Firmware started");
+    info!("DWT cycle counter enabled");
 
     info!("SPI1 maximum frequency: {} Hz", spi.maximum_frequency());
 

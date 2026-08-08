@@ -2,6 +2,7 @@ use core::num::NonZeroU32;
 
 use embassy_stm32::spi::Error;
 
+use crate::cycle_counter::CycleCounter;
 use crate::timer::BenchmarkTimer;
 use crate::transfer::{DmaTransfer, SpiTransfer};
 
@@ -25,6 +26,7 @@ pub struct BenchmarkSummary {
     iterations: u32,
     bytes_per_iteration: usize,
     total_elapsed_microseconds: u64,
+    total_elapsed_cycles: u64,
     min_elapsed_microseconds: u64,
     max_elapsed_microseconds: u64,
 }
@@ -46,8 +48,16 @@ impl BenchmarkSummary {
         self.total_elapsed_microseconds
     }
 
+    pub const fn total_elapsed_cycles(&self) -> u64 {
+        self.total_elapsed_cycles
+    }
+
     pub fn average_elapsed_microseconds(&self) -> u64 {
         self.total_elapsed_microseconds / self.iterations as u64
+    }
+
+    pub fn average_cycles_per_transfer(&self) -> u64 {
+        self.total_elapsed_cycles / self.iterations as u64
     }
 
     pub fn throughput_bytes_per_second(&self) -> Option<u64> {
@@ -82,6 +92,8 @@ impl SpiBenchmark {
     {
         let iterations = config.iterations().get();
 
+        let start_cycles = CycleCounter::current();
+
         let total_timer = BenchmarkTimer::start();
 
         for _ in 0..iterations {
@@ -89,6 +101,8 @@ impl SpiBenchmark {
         }
 
         let total_elapsed_microseconds = total_timer.elapsed().as_micros();
+
+        let total_elapsed_cycles = CycleCounter::elapsed_since(start_cycles) as u64;
 
         let mut min_elapsed_microseconds = u64::MAX;
         let mut max_elapsed_microseconds = 0;
@@ -109,6 +123,7 @@ impl SpiBenchmark {
             iterations,
             bytes_per_iteration: data.len(),
             total_elapsed_microseconds,
+            total_elapsed_cycles,
             min_elapsed_microseconds,
             max_elapsed_microseconds,
         })
@@ -124,6 +139,8 @@ impl SpiBenchmark {
     {
         let iterations = config.iterations().get();
 
+        let start_cycles = CycleCounter::current();
+
         let total_timer = BenchmarkTimer::start();
 
         for _ in 0..iterations {
@@ -131,6 +148,8 @@ impl SpiBenchmark {
         }
 
         let total_elapsed_microseconds = total_timer.elapsed().as_micros();
+
+        let total_elapsed_cycles = CycleCounter::elapsed_since(start_cycles) as u64;
 
         let mut min_elapsed_microseconds = u64::MAX;
         let mut max_elapsed_microseconds = 0;
@@ -151,6 +170,7 @@ impl SpiBenchmark {
             iterations,
             bytes_per_iteration: data.len(),
             total_elapsed_microseconds,
+            total_elapsed_cycles,
             min_elapsed_microseconds,
             max_elapsed_microseconds,
         })

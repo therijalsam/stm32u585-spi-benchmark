@@ -4,26 +4,34 @@ An embedded Rust project for measuring and comparing SPI transfer performance on
 
 I'm developing and testing this on the MM6108-EKH05 board using Embassy and probe-rs.
 
-The project currently benchmarks blocking and DMA-backed SPI transfers across different payload sizes and measures transfer time, throughput, and timing variation.
+The project benchmarks blocking and DMA-backed SPI transfers across different
+payload sizes and SPI clock frequencies. It measures transfer timing,
+throughput, timing variation, and whether other application tasks can continue
+executing while SPI communication is active.
 
 ## Goal
 
-The goal of this project is to build a reusable SPI performance benchmarking framework for the STM32U585 and use it to understand how different SPI transfer methods behave in a real embedded system.
+The goal of this project is to build a reusable SPI performance benchmarking
+framework for the STM32U585 and use it to understand how different SPI transfer
+methods behave in a real embedded system.
 
-I want to measure and compare:
+The benchmark focuses on:
 
 - transfer latency
 - throughput
-- CPU overhead
 - repeated-transfer performance
 - performance across different payload sizes
+- performance across different SPI clock frequencies
+- application task concurrency during DMA transfers
 
-The main purpose is not just to make SPI communication work, but to understand the performance trade-offs between different transfer methods and determine which approach is more appropriate for high-speed embedded applications.
+The purpose is not only to make SPI communication work, but to understand the
+performance trade-offs between blocking and DMA-backed communication and
+determine when each method is more appropriate.
 
 ## Hardware
 
 - MM6108-EKH05
-- STM32U585
+- STM32U585AI
 - ST-LINK V3
 
 ### SPI1 Pins
@@ -37,11 +45,23 @@ The main purpose is not just to make SPI communication work, but to understand t
 
 Chip select is controlled in software using PE12.
 
-The SPI clock is currently configured at:
+## Clock Configuration
 
-```text
-1 MHz
-```
+The STM32U585 is configured to use its internal 16 MHz HSI clock as the system
+clock for the benchmark.
+
+With the current configuration, SPI1 supports benchmark frequencies up to
+8 MHz.
+
+The firmware changes the SPI frequency at runtime and currently tests:
+
+- 1 MHz
+- 2 MHz
+- 4 MHz
+- 8 MHz
+
+Before each benchmark, the firmware reports both the requested SPI frequency
+and the actual configured frequency.
 
 ## Current Features
 
@@ -59,9 +79,11 @@ The SPI clock is currently configured at:
 - Transfer timing
 - Minimum and maximum per-transfer timing
 - Throughput calculation
-- Blocking vs DMA performance comparison
 - CPU task concurrency during DMA transfers
 - Automatic blocking vs DMA throughput comparison
+- Runtime SPI clock configuration
+- SPI benchmarking at 1, 2, 4, and 8 MHz
+- Blocking vs DMA comparison across SPI clock frequencies
 
 ## Project Structure
 
@@ -80,24 +102,26 @@ The SPI clock is currently configured at:
 
 ### `main.rs`
 
-Initializes the STM32 peripherals, creates the SPI driver, runs the blocking and
-DMA benchmarks, measures background task progress during each transfer method,
-automatically compares blocking and DMA throughput for each payload size
-and prints the results through `defmt`.
+Initializes the STM32U585 using the internal HSI clock, creates the SPI driver,
+runs blocking and DMA benchmarks across multiple SPI clock frequencies,
+measures background task progress, and automatically compares the performance
+of both transfer methods.
 
 ### `spi.rs`
 
-Contains the SPI1 implementation and chip-select handling.
+Contains the SPI1 implementation, software chip-select handling, blocking and
+DMA-backed transfers, and runtime SPI clock configuration.
 
 The SPI driver supports:
 
 - blocking SPI writes
 - DMA-backed asynchronous SPI writes
 - software-controlled chip select
+- runtime SPI frequency changes
 
 ### `transfer.rs`
 
-Defines the interfaces used by the benchmark code.
+Defines the interfaces used by the benchmark framework.
 
 ```rust
 pub trait SpiTransfer {
@@ -115,7 +139,8 @@ pub trait DmaTransfer {
 }
 ```
 
-This keeps the benchmark logic separate from the SPI hardware implementation.
+This keeps the benchmark logic separate from the hardware-specific SPI
+implementation.
 
 ### `timer.rs`
 
@@ -123,7 +148,8 @@ Contains the timer used to measure SPI transfer duration.
 
 ### `benchmark.rs`
 
-Contains the benchmark configuration and execution logic for both blocking and DMA transfers.
+Contains the benchmark configuration and execution logic for both blocking and
+DMA transfers.
 
 It calculates:
 
@@ -137,9 +163,7 @@ It calculates:
 
 ## Current Benchmark
 
-The current benchmark compares blocking SPI and DMA-backed SPI transfers using multiple payload sizes.
-
-SPI1 is configured at 1 MHz, and each payload is transferred 100 times.
+The benchmark tests four payload sizes:
 
 | Payload Size | Iterations | Total Bytes |
 |-------------:|-----------:|------------:|
@@ -157,113 +181,143 @@ let data_64 = [0xAA; 64];
 let data_256 = [0xAA; 256];
 ```
 
-Both transfer methods use the same payload sizes and iteration counts so their performance can be compared directly.
+The same payload sizes and iteration count are used for blocking and DMA
+transfers at every SPI clock frequency.
 
-## Blocking SPI Results
+## SPI Clock Scaling Results
 
-One benchmark run produced:
+### Blocking Throughput
 
-| Payload | Total Time | Aggregate Avg | Measured Min | Measured Max | Throughput |
-|--------:|-----------:|--------------:|-------------:|-------------:|-----------:|
-| 4 B | 10,416 us | 104 us | 112 us | 112 us | 38,402 bytes/s |
-| 16 B | 26,952 us | 269 us | 277 us | 318 us | 59,364 bytes/s |
-| 64 B | 93,034 us | 930 us | 937 us | 978 us | 68,792 bytes/s |
-| 256 B | 357,352 us | 3,573 us | 3,577 us | 3,618 us | 71,638 bytes/s |
+| SPI Clock | 4 B | 16 B | 64 B | 256 B |
+|----------:|----:|-----:|-----:|------:|
+| 1 MHz | 79,856 B/s | 109,589 B/s | 120,690 B/s | 123,909 B/s |
+| 2 MHz | 124,649 B/s | 199,625 B/s | 235,216 B/s | 246,115 B/s |
+| 4 MHz | 154,023 B/s | 238,024 B/s | 275,493 B/s | 286,857 B/s |
+| 8 MHz | 161,420 B/s | 242,314 B/s | 276,900 B/s | 287,208 B/s |
 
-## DMA SPI Results
+### DMA Throughput
 
-| Payload | Total Time | Aggregate Avg | Measured Min | Measured Max | Throughput |
-|--------:|-----------:|--------------:|-------------:|-------------:|-----------:|
-| 4 B | 18,752 us | 187 us | 195 us | 236 us | 21,331 bytes/s |
-| 16 B | 27,991 us | 279 us | 289 us | 326 us | 57,161 bytes/s |
-| 64 B | 61,788 us | 617 us | 626 us | 650 us | 103,579 bytes/s |
-| 256 B | 215,392 us | 2,153 us | 2,162 us | 2,162 us | 118,853 bytes/s |
+| SPI Clock | 4 B | 16 B | 64 B | 256 B |
+|----------:|----:|-----:|-----:|------:|
+| 1 MHz | 63,714 B/s | 100,844 B/s | 117,965 B/s | 122,158 B/s |
+| 2 MHz | 85,251 B/s | 168,883 B/s | 224,403 B/s | 239,693 B/s |
+| 4 MHz | 85,251 B/s | 218,132 B/s | 407,280 B/s | 472,124 B/s |
+| 8 MHz | 85,251 B/s | 218,132 B/s | 587,533 B/s | 850,809 B/s |
 
 ## Blocking vs DMA
 
-| Payload | Blocking Throughput | DMA Throughput | Faster |
-|--------:|--------------------:|---------------:|:------|
-| 4 B | 38,402 bytes/s | 21,331 bytes/s | Blocking |
-| 16 B | 59,364 bytes/s | 57,161 bytes/s | Blocking |
-| 64 B | 68,792 bytes/s | 103,579 bytes/s | DMA |
-| 256 B | 71,638 bytes/s | 118,853 bytes/s | DMA |
+The firmware automatically compares blocking and DMA throughput after each
+clock-frequency benchmark.
 
-The results show that DMA is not automatically faster for small SPI transfers.
+| SPI Clock | 4 B | 16 B | 64 B | 256 B |
+|----------:|:----|:-----|:-----|:------|
+| 1 MHz | Blocking +25% | Blocking +8% | Blocking +2% | Blocking +1% |
+| 2 MHz | Blocking +46% | Blocking +18% | Blocking +4% | Blocking +2% |
+| 4 MHz | Blocking +80% | Blocking +9% | DMA +47% | DMA +64% |
+| 8 MHz | Blocking +89% | Blocking +11% | DMA +112% | DMA +196% |
 
-For the 4-byte payload, blocking SPI performs better because the DMA transfer introduces additional setup and asynchronous execution overhead.
+The results show that DMA is not automatically faster than blocking SPI.
 
-At 16 bytes, the two approaches perform similarly.
+At 1 MHz and 2 MHz, blocking SPI provides slightly higher throughput for all
+payload sizes tested.
 
-At larger payload sizes, DMA becomes significantly faster. For the 64-byte transfer, DMA reaches about 1.5 times the blocking throughput. For the 256-byte transfer, DMA reaches about 1.66 times the blocking throughput.
+At 4 MHz and 8 MHz, blocking remains faster for the small 4-byte and 16-byte
+transfers, while DMA becomes significantly faster for the larger 64-byte and
+256-byte transfers.
 
-With the current implementation, the performance crossover between blocking and DMA occurs somewhere between 16 and 64 bytes.
+At 8 MHz, the 256-byte DMA benchmark reaches:
 
-### Automatic Comparison
+```text
+850,809 bytes/s
+```
 
-The firmware automatically compares blocking and DMA throughput after both
-benchmark sets complete.
+while the blocking implementation reaches:
 
-For each payload size, it reports:
+```text
+287,208 bytes/s
+```
 
-- blocking throughput
-- DMA throughput
-- the faster transfer method
-- approximate throughput improvement
+The firmware reports DMA as approximately 196% faster for this test.
 
-A run with the background concurrency task enabled produced:
+For the 4 MHz and 8 MHz tests, the transition between blocking and DMA
+performance occurs somewhere between the 16-byte and 64-byte payload sizes.
 
-| Payload | Blocking Throughput | DMA Throughput | Faster Method | Throughput Improvement |
-|--------:|--------------------:|---------------:|:--------------|-----------------------:|
-| 4 B | 38,413 bytes/s | 21,343 bytes/s | Blocking | 79% |
-| 16 B | 59,364 bytes/s | 49,280 bytes/s | Blocking | 20% |
-| 64 B | 68,792 bytes/s | 98,010 bytes/s | DMA | 42% |
-| 256 B | 71,646 bytes/s | 114,726 bytes/s | DMA | 60% |
+## Clock Scaling Analysis
 
-The results show a clear change in which transfer method performs better as
-payload size increases.
+The blocking implementation improves when moving from 1 MHz to higher SPI
+frequencies, but its throughput begins to level off.
 
-For 4-byte and 16-byte transfers, blocking SPI provides higher throughput.
-For 64-byte and 256-byte transfers, DMA provides higher throughput.
+For example, the 256-byte blocking benchmark produces:
 
-With the payload sizes currently tested, the performance crossover occurs
-between 16 and 64 bytes.
+| SPI Clock | Throughput |
+|----------:|-----------:|
+| 1 MHz | 123,909 B/s |
+| 2 MHz | 246,115 B/s |
+| 4 MHz | 286,857 B/s |
+| 8 MHz | 287,208 B/s |
 
-These measurements were collected while the background Embassy task was
-enabled. Because that task executes concurrently with DMA transfers, the DMA
-throughput values can be slightly lower than the baseline throughput results
-measured without the concurrency workload.
+Increasing the SPI clock from 4 MHz to 8 MHz produces almost no additional
+blocking throughput for this payload.
+
+DMA behaves differently:
+
+| SPI Clock | 256-byte DMA Throughput |
+|----------:|-------------------------:|
+| 1 MHz | 122,158 B/s |
+| 2 MHz | 239,693 B/s |
+| 4 MHz | 472,124 B/s |
+| 8 MHz | 850,809 B/s |
+
+DMA continues to scale much more strongly with SPI frequency for larger
+transfers.
+
+The measurements suggest that software and CPU overhead increasingly limit the
+blocking implementation as SPI bus speed increases, while DMA is better able to
+take advantage of the higher transfer rate.
 
 ## CPU Concurrency Test
 
-In addition to transfer performance, the firmware checks whether another
-application task can make progress while SPI communication is active.
+The firmware also checks whether another application task can make progress
+while SPI communication is active.
 
 A background Embassy task increments a counter approximately once every
 millisecond.
 
-One test run produced:
+```rust
+#[embassy_executor::task]
+async fn cpu_activity_task() {
+    loop {
+        CPU_ACTIVITY.fetch_add(1, Ordering::Relaxed);
 
-| Transfer Method | Background Task Progress |
-|:----------------|-------------------------:|
-| Blocking SPI | 0 |
-| DMA SPI | 553 |
+        Timer::after_millis(1).await;
+    }
+}
+```
 
-During the blocking SPI benchmark, the background task made no progress because
-the blocking transfers kept control of the executor.
+The measured task progress across the clock-scaling benchmark was:
 
-During the DMA-backed asynchronous benchmark, the background task executed 553
-times while SPI communication was in progress.
+| SPI Clock | Blocking Task Progress | DMA Task Progress |
+|----------:|-----------------------:|------------------:|
+| 1 MHz | 0 | 525 |
+| 2 MHz | 0 | 273 |
+| 4 MHz | 0 | 148 |
+| 8 MHz | 0 | 94 |
 
-This demonstrates that DMA-backed asynchronous SPI allows other Embassy tasks
-to make progress while a transfer is being handled by DMA.
+The background task made no progress during any blocking benchmark.
 
-The counter is not a CPU utilization percentage. It only indicates whether
-another task was able to execute during the benchmark.
+During every DMA benchmark, the background task continued to execute while SPI
+communication was active.
 
+The DMA task-progress count becomes smaller at higher SPI frequencies because
+the entire DMA benchmark finishes faster.
+
+This counter is not a CPU utilization percentage. It only shows whether another
+Embassy task was able to execute while SPI communication was in progress.
 
 ## Timing Method
 
-Aggregate timing is measured using one timer around the complete set of repeated SPI transfers.
+Aggregate timing is measured using one timer around the complete set of
+repeated SPI transfers.
 
 ```text
 start timer
@@ -277,25 +331,28 @@ transfer
 stop timer
 ```
 
-The aggregate average is calculated from:
+The aggregate average is calculated using:
 
 ```text
-total elapsed time / number of iterations
+aggregate_average = total_elapsed_time / iterations
 ```
 
-Minimum and maximum transfer times are measured separately by timing individual transfers.
+Minimum and maximum transfer times are measured separately by timing individual
+transfers.
 
-Because individual timing introduces additional measurement overhead, the measured minimum can be slightly higher than the aggregate average.
+Because individual timing adds measurement overhead, the measured minimum can
+sometimes be slightly higher than the aggregate average.
 
 ## Throughput
 
-Throughput is calculated using:
+Throughput is calculated from the total number of transferred bytes and total
+elapsed time.
 
 ```text
 throughput = total_bytes × 1,000,000 / elapsed_time_us
 ```
 
-For example, the 256-byte DMA benchmark transferred:
+For example, the 8 MHz 256-byte DMA benchmark transferred:
 
 ```text
 25,600 bytes
@@ -304,13 +361,13 @@ For example, the 256-byte DMA benchmark transferred:
 in:
 
 ```text
-215,392 us
+30,089 us
 ```
 
 which gives approximately:
 
 ```text
-118,853 bytes/s
+850,809 bytes/s
 ```
 
 ## Build
@@ -321,13 +378,13 @@ Install the Rust target:
 rustup target add thumbv8m.main-none-eabihf
 ```
 
-Build the project:
+Build the firmware:
 
 ```bash
 cargo build
 ```
 
-Format the code:
+Format the project:
 
 ```bash
 cargo fmt
@@ -350,40 +407,47 @@ Example:
 ```text
 STM32U585 SPI Benchmark
 Firmware started
-SPI1 initialized at 1 MHz
+SPI1 maximum frequency: 8000000 Hz
+
+Requested SPI frequency: 8000000 Hz
+Maximum supported SPI frequency: 8000000 Hz
+Actual SPI frequency: 8000000 Hz
 
 Starting blocking SPI benchmarks
+SPI frequency: 8000000 Hz
 
-Payload size: 64 bytes
+Payload size: 256 bytes
 Iterations: 100
-Total bytes: 6400
-Total elapsed time: 93034 us
-Aggregate average time per transfer: 930 us
-Measured minimum time per transfer: 937 us
-Measured maximum time per transfer: 978 us
-Throughput: 68792 bytes/s
+Throughput: 287208 bytes/s
 
-Blocking SPI benchmarks complete
 Starting DMA SPI benchmarks
+SPI frequency: 8000000 Hz
 
-DMA payload size: 64 bytes
+DMA payload size: 256 bytes
 Iterations: 100
-Total bytes: 6400
-Total elapsed time: 61788 us
-Aggregate average time per transfer: 617 us
-Measured minimum time per transfer: 626 us
-Measured maximum time per transfer: 650 us
-DMA throughput: 103579 bytes/s
+DMA throughput: 850809 bytes/s
 
-DMA SPI benchmarks complete
+CPU worker progress during DMA: 94
+
+Blocking vs DMA comparison
+SPI frequency: 8000000 Hz
+
+Comparison for 256 byte payload
+Blocking throughput: 287208 bytes/s
+DMA throughput: 850809 bytes/s
+Faster method: DMA
+DMA throughput improvement: 196%
+
+SPI clock benchmarks complete
 Benchmark complete
 ```
 
 ## Development
 
-The project is developed using small feature branches.
+The project is developed using feature branches.
 
-Each feature is built and tested before being merged into `main`.
+Each feature is built and tested on the STM32U585 before being merged into
+`main`.
 
 Some of the completed branches include:
 
@@ -401,6 +465,11 @@ feature/multiple-transfer-sizes
 feature/transfer-statistics
 feature/dma-spi
 feature/dma-benchmark
+feature/dma-cpu-concurrency
+feature/automatic-comparison
+feature/spi-clock-benchmark
 ```
 
-The README is updated when a feature changes the behavior or capabilities of the project so that it reflects the current state of the firmware.
+The README is updated whenever a feature changes the behavior, measurements, or
+capabilities of the firmware so that it reflects the current state of the
+project.

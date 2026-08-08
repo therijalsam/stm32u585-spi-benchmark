@@ -18,6 +18,8 @@ use transfer::{DmaTransfer, SpiTransfer};
 
 static CPU_ACTIVITY: AtomicU32 = AtomicU32::new(0);
 
+const SPI_FREQUENCIES: [u32; 4] = [1_000_000, 2_000_000, 4_000_000, 8_000_000];
+
 #[embassy_executor::task]
 async fn cpu_activity_task() {
     loop {
@@ -181,24 +183,32 @@ fn print_comparison(
     }
 }
 
-#[embassy_executor::main]
-async fn main(spawner: Spawner) {
-    let peripherals = embassy_stm32::init(Default::default());
-
-    let mut spi = spi::BenchmarkSpi::new(peripherals);
-
-    spawner.spawn(cpu_activity_task()).unwrap();
-
-    Timer::after_millis(10).await;
-
+async fn run_clock_benchmark(
+    spi: &mut spi::BenchmarkSpi<'_>,
+    requested_frequency: u32,
+    config: &BenchmarkConfig,
+) {
     info!("====================================");
-    info!("STM32U585 SPI Benchmark");
-    info!("Firmware started");
-    info!("SPI1 initialized at 1 MHz");
-    info!("====================================");
+    info!("Requested SPI frequency: {} Hz", requested_frequency);
+    info!(
+        "Maximum supported SPI frequency: {} Hz",
+        spi.maximum_frequency()
+    );
 
-    let config =
-        BenchmarkConfig::new(NonZeroU32::new(100).expect("benchmark iterations must be non-zero"));
+    let actual_frequency = match spi.set_frequency(requested_frequency) {
+        Ok(frequency) => frequency,
+
+        Err(_) => {
+            error!(
+                "Skipping unsupported SPI frequency: {} Hz",
+                requested_frequency
+            );
+            return;
+        }
+    };
+
+    info!("Actual SPI frequency: {} Hz", actual_frequency);
+    info!("====================================");
 
     let data_4 = [0xAA; 4];
     let data_16 = [0xAA; 16];
@@ -209,15 +219,16 @@ async fn main(spawner: Spawner) {
 
     info!("====================================");
     info!("Starting blocking SPI benchmarks");
+    info!("SPI frequency: {} Hz", actual_frequency);
     info!("====================================");
 
-    let blocking_4 = run_benchmark(&mut spi, &data_4, &config);
+    let blocking_4 = run_benchmark(spi, &data_4, config);
 
-    let blocking_16 = run_benchmark(&mut spi, &data_16, &config);
+    let blocking_16 = run_benchmark(spi, &data_16, config);
 
-    let blocking_64 = run_benchmark(&mut spi, &data_64, &config);
+    let blocking_64 = run_benchmark(spi, &data_64, config);
 
-    let blocking_256 = run_benchmark(&mut spi, &data_256, &config);
+    let blocking_256 = run_benchmark(spi, &data_256, config);
 
     let blocking_cpu_activity = CPU_ACTIVITY.load(Ordering::Relaxed);
 
@@ -229,17 +240,17 @@ async fn main(spawner: Spawner) {
     CPU_ACTIVITY.store(0, Ordering::Relaxed);
 
     info!("====================================");
-    info!("Blocking SPI benchmarks complete");
     info!("Starting DMA SPI benchmarks");
+    info!("SPI frequency: {} Hz", actual_frequency);
     info!("====================================");
 
-    let dma_4 = run_dma_benchmark(&mut spi, &data_4, &config).await;
+    let dma_4 = run_dma_benchmark(spi, &data_4, config).await;
 
-    let dma_16 = run_dma_benchmark(&mut spi, &data_16, &config).await;
+    let dma_16 = run_dma_benchmark(spi, &data_16, config).await;
 
-    let dma_64 = run_dma_benchmark(&mut spi, &data_64, &config).await;
+    let dma_64 = run_dma_benchmark(spi, &data_64, config).await;
 
-    let dma_256 = run_dma_benchmark(&mut spi, &data_256, &config).await;
+    let dma_256 = run_dma_benchmark(spi, &data_256, config).await;
 
     let dma_cpu_activity = CPU_ACTIVITY.load(Ordering::Relaxed);
 
@@ -247,6 +258,7 @@ async fn main(spawner: Spawner) {
 
     info!("====================================");
     info!("Blocking vs DMA comparison");
+    info!("SPI frequency: {} Hz", actual_frequency);
     info!("====================================");
 
     print_comparison(4, blocking_4, dma_4);
@@ -255,7 +267,40 @@ async fn main(spawner: Spawner) {
     print_comparison(256, blocking_256, dma_256);
 
     info!("====================================");
-    info!("DMA SPI benchmarks complete");
+    info!("Benchmark complete for {} Hz", actual_frequency);
+    info!("====================================");
+}
+
+#[embassy_executor::main]
+async fn main(spawner: Spawner) {
+    let mut mcu_config = embassy_stm32::Config::default();
+
+    mcu_config.rcc.hsi = true;
+    mcu_config.rcc.sys = embassy_stm32::rcc::Sysclk::HSI;
+
+    let peripherals = embassy_stm32::init(mcu_config);
+
+    let mut spi = spi::BenchmarkSpi::new(peripherals);
+
+    spawner.spawn(cpu_activity_task()).unwrap();
+
+    Timer::after_millis(10).await;
+
+    info!("====================================");
+    info!("STM32U585 SPI Benchmark");
+    info!("Firmware started");
+    info!("SPI1 maximum frequency: {} Hz", spi.maximum_frequency());
+    info!("====================================");
+
+    let config =
+        BenchmarkConfig::new(NonZeroU32::new(100).expect("benchmark iterations must be non-zero"));
+
+    for frequency in SPI_FREQUENCIES {
+        run_clock_benchmark(&mut spi, frequency, &config).await;
+    }
+
+    info!("====================================");
+    info!("SPI clock benchmarks complete");
     info!("Benchmark complete");
     info!("====================================");
 

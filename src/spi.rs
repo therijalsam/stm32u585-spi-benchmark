@@ -31,6 +31,26 @@ impl<'d> BenchmarkSpi<'d> {
         Self { spi, chip_select }
     }
 
+    pub fn set_frequency(&mut self, frequency_hz: u32) -> Result<u32, ()> {
+        let maximum_frequency = self.maximum_frequency();
+
+        if frequency_hz == 0 || frequency_hz > maximum_frequency {
+            return Err(());
+        }
+
+        let mut config = self.spi.get_current_config();
+
+        config.frequency = Hertz(frequency_hz);
+
+        self.spi.set_config(&config)?;
+
+        Ok(self.spi.get_current_config().frequency.0)
+    }
+
+    pub fn maximum_frequency(&self) -> u32 {
+        embassy_stm32::rcc::frequency::<embassy_stm32::peripherals::SPI1>().0 / 2
+    }
+
     fn write_internal(&mut self, data: &[u8]) -> Result<(), Error> {
         self.chip_select.set_low();
 

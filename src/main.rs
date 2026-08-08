@@ -20,6 +20,8 @@ static CPU_ACTIVITY: AtomicU32 = AtomicU32::new(0);
 
 const SPI_FREQUENCIES: [u32; 4] = [1_000_000, 2_000_000, 4_000_000, 8_000_000];
 
+const PAYLOAD_SIZES: [usize; 9] = [4, 16, 24, 32, 40, 48, 56, 64, 256];
+
 #[embassy_executor::task]
 async fn cpu_activity_task() {
     loop {
@@ -80,6 +82,7 @@ where
 
         Err(error) => {
             error!("SPI benchmark failed: {:?}", error);
+
             None
         }
     }
@@ -136,6 +139,7 @@ where
 
         Err(error) => {
             error!("DMA SPI benchmark failed: {:?}", error);
+
             None
         }
     }
@@ -152,10 +156,12 @@ fn print_comparison(
     match (blocking_throughput, dma_throughput) {
         (Some(blocking), Some(dma)) => {
             info!("Blocking throughput: {} bytes/s", blocking);
+
             info!("DMA throughput: {} bytes/s", dma);
 
             if blocking == 0 || dma == 0 {
                 error!("Unable to calculate throughput improvement");
+
                 return;
             }
 
@@ -163,11 +169,13 @@ fn print_comparison(
                 let improvement = (dma - blocking).saturating_mul(100) / blocking;
 
                 info!("Faster method: DMA");
+
                 info!("DMA throughput improvement: {}%", improvement);
             } else if blocking > dma {
                 let improvement = (blocking - dma).saturating_mul(100) / dma;
 
                 info!("Faster method: Blocking");
+
                 info!("Blocking throughput improvement: {}%", improvement);
             } else {
                 info!("Faster method: Equal");
@@ -183,13 +191,71 @@ fn print_comparison(
     }
 }
 
+fn print_crossover_summary(
+    spi_frequency: u32,
+    blocking_results: &[Option<u64>],
+    dma_results: &[Option<u64>],
+) {
+    info!("====================================");
+
+    info!("DMA crossover analysis at {} Hz", spi_frequency);
+
+    info!("====================================");
+
+    let mut crossover_found = false;
+
+    for index in 1..PAYLOAD_SIZES.len() {
+        let previous_blocking = blocking_results[index - 1];
+
+        let previous_dma = dma_results[index - 1];
+
+        let current_blocking = blocking_results[index];
+
+        let current_dma = dma_results[index];
+
+        if let (
+            Some(previous_blocking),
+            Some(previous_dma),
+            Some(current_blocking),
+            Some(current_dma),
+        ) = (
+            previous_blocking,
+            previous_dma,
+            current_blocking,
+            current_dma,
+        ) {
+            let blocking_was_faster = previous_blocking >= previous_dma;
+
+            let dma_is_faster = current_dma > current_blocking;
+
+            if blocking_was_faster && dma_is_faster {
+                info!(
+                    "DMA crossover detected between {} and {} bytes",
+                    PAYLOAD_SIZES[index - 1],
+                    PAYLOAD_SIZES[index]
+                );
+
+                crossover_found = true;
+
+                break;
+            }
+        }
+    }
+
+    if !crossover_found {
+        info!("No blocking-to-DMA crossover detected in tested payload range");
+    }
+}
+
 async fn run_clock_benchmark(
     spi: &mut spi::BenchmarkSpi<'_>,
     requested_frequency: u32,
     config: &BenchmarkConfig,
 ) {
     info!("====================================");
+
     info!("Requested SPI frequency: {} Hz", requested_frequency);
+
     info!(
         "Maximum supported SPI frequency: {} Hz",
         spi.maximum_frequency()
@@ -203,32 +269,31 @@ async fn run_clock_benchmark(
                 "Skipping unsupported SPI frequency: {} Hz",
                 requested_frequency
             );
+
             return;
         }
     };
 
     info!("Actual SPI frequency: {} Hz", actual_frequency);
+
     info!("====================================");
 
-    let data_4 = [0xAA; 4];
-    let data_16 = [0xAA; 16];
-    let data_64 = [0xAA; 64];
-    let data_256 = [0xAA; 256];
+    let data = [0xAA; 256];
 
     CPU_ACTIVITY.store(0, Ordering::Relaxed);
 
     info!("====================================");
     info!("Starting blocking SPI benchmarks");
+
     info!("SPI frequency: {} Hz", actual_frequency);
+
     info!("====================================");
 
-    let blocking_4 = run_benchmark(spi, &data_4, config);
+    let mut blocking_results = [None; PAYLOAD_SIZES.len()];
 
-    let blocking_16 = run_benchmark(spi, &data_16, config);
-
-    let blocking_64 = run_benchmark(spi, &data_64, config);
-
-    let blocking_256 = run_benchmark(spi, &data_256, config);
+    for (index, payload_size) in PAYLOAD_SIZES.iter().copied().enumerate() {
+        blocking_results[index] = run_benchmark(spi, &data[..payload_size], config);
+    }
 
     let blocking_cpu_activity = CPU_ACTIVITY.load(Ordering::Relaxed);
 
@@ -241,16 +306,16 @@ async fn run_clock_benchmark(
 
     info!("====================================");
     info!("Starting DMA SPI benchmarks");
+
     info!("SPI frequency: {} Hz", actual_frequency);
+
     info!("====================================");
 
-    let dma_4 = run_dma_benchmark(spi, &data_4, config).await;
+    let mut dma_results = [None; PAYLOAD_SIZES.len()];
 
-    let dma_16 = run_dma_benchmark(spi, &data_16, config).await;
-
-    let dma_64 = run_dma_benchmark(spi, &data_64, config).await;
-
-    let dma_256 = run_dma_benchmark(spi, &data_256, config).await;
+    for (index, payload_size) in PAYLOAD_SIZES.iter().copied().enumerate() {
+        dma_results[index] = run_dma_benchmark(spi, &data[..payload_size], config).await;
+    }
 
     let dma_cpu_activity = CPU_ACTIVITY.load(Ordering::Relaxed);
 
@@ -258,16 +323,21 @@ async fn run_clock_benchmark(
 
     info!("====================================");
     info!("Blocking vs DMA comparison");
+
     info!("SPI frequency: {} Hz", actual_frequency);
-    info!("====================================");
-
-    print_comparison(4, blocking_4, dma_4);
-    print_comparison(16, blocking_16, dma_16);
-    print_comparison(64, blocking_64, dma_64);
-    print_comparison(256, blocking_256, dma_256);
 
     info!("====================================");
+
+    for (index, payload_size) in PAYLOAD_SIZES.iter().copied().enumerate() {
+        print_comparison(payload_size, blocking_results[index], dma_results[index]);
+    }
+
+    print_crossover_summary(actual_frequency, &blocking_results, &dma_results);
+
+    info!("====================================");
+
     info!("Benchmark complete for {} Hz", actual_frequency);
+
     info!("====================================");
 }
 
@@ -276,6 +346,7 @@ async fn main(spawner: Spawner) {
     let mut mcu_config = embassy_stm32::Config::default();
 
     mcu_config.rcc.hsi = true;
+
     mcu_config.rcc.sys = embassy_stm32::rcc::Sysclk::HSI;
 
     let peripherals = embassy_stm32::init(mcu_config);
@@ -289,7 +360,9 @@ async fn main(spawner: Spawner) {
     info!("====================================");
     info!("STM32U585 SPI Benchmark");
     info!("Firmware started");
+
     info!("SPI1 maximum frequency: {} Hz", spi.maximum_frequency());
+
     info!("====================================");
 
     let config =

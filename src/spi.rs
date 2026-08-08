@@ -4,7 +4,7 @@ use embassy_stm32::mode::Async;
 use embassy_stm32::spi::{Config, Error, Spi};
 use embassy_stm32::time::Hertz;
 
-use crate::transfer::SpiTransfer;
+use crate::transfer::{DmaTransfer, SpiTransfer};
 
 pub struct BenchmarkSpi<'d> {
     spi: Spi<'d, Async>,
@@ -55,5 +55,11 @@ impl<'d> BenchmarkSpi<'d> {
 impl SpiTransfer for BenchmarkSpi<'_> {
     fn write(&mut self, data: &[u8]) -> Result<(), Error> {
         self.write_internal(data) //write internal contains hardware specific implementation of the write function.
+    }
+}
+
+impl DmaTransfer for BenchmarkSpi<'_> {
+    async fn write_dma(&mut self, data: &[u8]) -> Result<(), Error> {
+        self.dma_write(data).await
     }
 }

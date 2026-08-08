@@ -3,7 +3,7 @@ use core::num::NonZeroU32;
 use embassy_stm32::spi::Error;
 
 use crate::timer::BenchmarkTimer;
-use crate::transfer::SpiTransfer;
+use crate::transfer::{DmaTransfer, SpiTransfer};
 
 /// Configuration used when running an SPI benchmark.
 pub struct BenchmarkConfig {
@@ -97,6 +97,48 @@ impl SpiBenchmark {
             let transfer_timer = BenchmarkTimer::start();
 
             transfer.write(data)?;
+
+            let transfer_elapsed = transfer_timer.elapsed().as_micros();
+
+            min_elapsed_microseconds = min_elapsed_microseconds.min(transfer_elapsed);
+
+            max_elapsed_microseconds = max_elapsed_microseconds.max(transfer_elapsed);
+        }
+
+        Ok(BenchmarkSummary {
+            iterations,
+            bytes_per_iteration: data.len(),
+            total_elapsed_microseconds,
+            min_elapsed_microseconds,
+            max_elapsed_microseconds,
+        })
+    }
+
+    pub async fn run_repeated_dma_write<T>(
+        transfer: &mut T,
+        data: &[u8],
+        config: &BenchmarkConfig,
+    ) -> Result<BenchmarkSummary, Error>
+    where
+        T: DmaTransfer,
+    {
+        let iterations = config.iterations().get();
+
+        let total_timer = BenchmarkTimer::start();
+
+        for _ in 0..iterations {
+            transfer.write_dma(data).await?;
+        }
+
+        let total_elapsed_microseconds = total_timer.elapsed().as_micros();
+
+        let mut min_elapsed_microseconds = u64::MAX;
+        let mut max_elapsed_microseconds = 0;
+
+        for _ in 0..iterations {
+            let transfer_timer = BenchmarkTimer::start();
+
+            transfer.write_dma(data).await?;
 
             let transfer_elapsed = transfer_timer.elapsed().as_micros();
 

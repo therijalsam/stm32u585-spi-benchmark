@@ -60,6 +60,7 @@ The SPI clock is currently configured at:
 - Minimum and maximum per-transfer timing
 - Throughput calculation
 - Blocking vs DMA performance comparison
+- CPU task concurrency during DMA transfers
 
 ## Project Structure
 
@@ -78,7 +79,9 @@ The SPI clock is currently configured at:
 
 ### `main.rs`
 
-Initializes the STM32 peripherals, creates the SPI driver, runs the blocking and DMA benchmarks, and prints the results through `defmt`.
+Initializes the STM32 peripherals, creates the SPI driver, runs the blocking and
+DMA benchmarks, measures background task progress during each transfer method,
+and prints the results through `defmt`.
 
 ### `spi.rs`
 
@@ -192,6 +195,24 @@ At 16 bytes, the two approaches perform similarly.
 At larger payload sizes, DMA becomes significantly faster. For the 64-byte transfer, DMA reaches about 1.5 times the blocking throughput. For the 256-byte transfer, DMA reaches about 1.66 times the blocking throughput.
 
 With the current implementation, the performance crossover between blocking and DMA occurs somewhere between 16 and 64 bytes.
+
+## CPU Concurrency Test
+
+In addition to measuring transfer speed, the benchmark also checks whether
+other application work can make progress while SPI communication is running.
+
+A background Embassy task increments a counter approximately once every
+millisecond:
+
+```rust
+#[embassy_executor::task]
+async fn cpu_activity_task() {
+    loop {
+        CPU_ACTIVITY.fetch_add(1, Ordering::Relaxed);
+
+        Timer::after_millis(1).await;
+    }
+}
 
 ## Timing Method
 

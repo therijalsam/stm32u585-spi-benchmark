@@ -57,6 +57,7 @@ The SPI clock is currently configured at:
 - Repeated SPI benchmarking
 - Multiple SPI payload size benchmarking
 - Minimum and maximum per-transfer timing
+- DMA-backed SPI writes
 
 
 ## Project Structure
@@ -80,7 +81,15 @@ Initializes the STM32 peripherals, creates the SPI driver, runs the benchmark, a
 
 ### `spi.rs`
 
-Contains the blocking SPI1 implementation and chip-select handling.
+### `spi.rs`
+
+Contains the SPI1 implementation and chip-select handling.
+
+The SPI driver supports:
+
+- blocking SPI writes
+- DMA-backed asynchronous SPI writes
+- software-controlled chip select
 
 ### `transfer.rs`
 
@@ -110,6 +119,17 @@ Contains the benchmark configuration, execution logic, and calculations for:
 - total elapsed time
 - average transfer time
 - throughput
+
+## DMA SPI
+
+The SPI driver now supports DMA-backed asynchronous writes using Embassy.
+
+A 64-byte DMA transfer was successfully executed on the STM32U585:
+
+```text
+Starting DMA SPI test
+DMA SPI write completed
+DMA test bytes: 64
 
 ## Current Benchmark
 

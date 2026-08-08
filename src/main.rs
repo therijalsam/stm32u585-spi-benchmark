@@ -68,7 +68,8 @@ where
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
     let peripherals = embassy_stm32::init(Default::default());
-    let mut spi = spi::BlockingSpi::new(peripherals);
+
+    let mut spi = spi::BenchmarkSpi::new(peripherals);
 
     info!("====================================");
     info!("STM32U585 SPI Benchmark");
@@ -88,6 +89,24 @@ async fn main(_spawner: Spawner) {
     run_benchmark(&mut spi, &data_16, &config);
     run_benchmark(&mut spi, &data_64, &config);
     run_benchmark(&mut spi, &data_256, &config);
+
+    info!("====================================");
+    info!("Blocking SPI benchmarks complete");
+    info!("Starting DMA SPI test");
+    info!("====================================");
+
+    let dma_test_data = [0xAA; 64];
+
+    match spi.dma_write(&dma_test_data).await {
+        Ok(()) => {
+            info!("DMA SPI write completed");
+            info!("DMA test bytes: {}", dma_test_data.len());
+        }
+
+        Err(error) => {
+            error!("DMA SPI write failed: {:?}", error);
+        }
+    }
 
     info!("====================================");
     info!("Benchmark complete");

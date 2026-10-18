@@ -1,3 +1,4 @@
+import csv
 import shutil
 import subprocess
 import sys
@@ -6,6 +7,7 @@ from pathlib import Path
 
 LATEST_RESULT = Path("results/benchmark.csv")
 RUNS_DIRECTORY = Path("results/runs")
+COMBINED_RESULTS = Path("results/benchmark_runs.csv")
 
 
 def next_run_file():
@@ -25,6 +27,44 @@ def next_run_file():
         run_number += 1
 
 
+def append_run_to_dataset(run_file):
+    run_number = int(
+        run_file.stem.split("_")[-1]
+    )
+
+    with run_file.open(
+        newline="",
+    ) as source_file:
+        reader = csv.DictReader(
+            source_file,
+        )
+
+        fieldnames = [
+            "run_id",
+            *reader.fieldnames,
+        ]
+
+        write_header = not COMBINED_RESULTS.exists()
+
+        with COMBINED_RESULTS.open(
+            "a",
+            newline="",
+        ) as combined_file:
+            writer = csv.DictWriter(
+                combined_file,
+                fieldnames=fieldnames,
+            )
+
+            if write_header:
+                writer.writeheader()
+
+            for row in reader:
+                writer.writerow({
+                    "run_id": run_number,
+                    **row,
+                })
+
+
 def run_single_experiment():
     subprocess.run(
         ["python3", "tools/capture_csv.py"],
@@ -38,7 +78,12 @@ def run_single_experiment():
         output_file,
     )
 
+    append_run_to_dataset(
+        output_file,
+    )
+
     print(f"Saved experiment to {output_file}")
+    print(f"Updated combined dataset at {COMBINED_RESULTS}")
 
 
 def run_experiments(run_count):

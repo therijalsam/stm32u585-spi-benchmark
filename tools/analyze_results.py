@@ -1,12 +1,17 @@
 import csv
+import math
 from collections import Counter, defaultdict
 from pathlib import Path
+from statistics import mean, stdev
+
+from scipy.stats import t as student_t
 
 
 INPUT_FILE = Path("results/benchmark_runs.csv")
-MEAN_THROUGHPUT_FILE = Path("results/mean_throughput.csv")
+STATISTICS_FILE = Path("results/throughput_statistics.csv")
 
 EXPECTED_MEASUREMENTS_PER_RUN = 72
+CONFIDENCE_LEVEL = 0.95
 
 REQUIRED_FIELDS = {
     "run_id",
@@ -88,7 +93,7 @@ def validate_run_sizes(rows):
     return run_counts
 
 
-def calculate_mean_throughput(rows):
+def calculate_throughput_statistics(rows):
     throughput_groups = defaultdict(list)
 
     for row in rows:
@@ -102,16 +107,43 @@ def calculate_mean_throughput(rows):
             int(row["throughput_bytes_per_second"])
         )
 
-    mean_throughput = {}
+    statistics = {}
 
     for key, values in throughput_groups.items():
-        mean_throughput[key] = sum(values) / len(values)
+        sample_count = len(values)
+        mean_value = mean(values)
+        standard_deviation = stdev(values)
 
-    return mean_throughput
+        degrees_of_freedom = sample_count - 1
+
+        critical_value = student_t.ppf(
+            1 - (1 - CONFIDENCE_LEVEL) / 2,
+            degrees_of_freedom,
+        )
+
+        standard_error = (
+            standard_deviation
+            / math.sqrt(sample_count)
+        )
+
+        margin_of_error = (
+            critical_value
+            * standard_error
+        )
+
+        statistics[key] = {
+            "mean": mean_value,
+            "standard_deviation": standard_deviation,
+            "sample_count": sample_count,
+            "confidence_lower": mean_value - margin_of_error,
+            "confidence_upper": mean_value + margin_of_error,
+        }
+
+    return statistics
 
 
-def write_mean_throughput(mean_throughput):
-    with MEAN_THROUGHPUT_FILE.open(
+def write_throughput_statistics(statistics):
+    with STATISTICS_FILE.open(
         "w",
         newline="",
     ) as file:
@@ -123,17 +155,26 @@ def write_mean_throughput(mean_throughput):
             "spi_frequency_hz",
             "method",
             "payload_bytes",
+            "sample_count",
             "mean_throughput_bytes_per_second",
+            "standard_deviation_bytes_per_second",
+            "confidence_interval_95_lower_bytes_per_second",
+            "confidence_interval_95_upper_bytes_per_second",
         ])
 
-        for key in sorted(mean_throughput):
+        for key in sorted(statistics):
             frequency, method, payload = key
+            result = statistics[key]
 
             writer.writerow([
                 frequency,
                 method,
                 payload,
-                f"{mean_throughput[key]:.2f}",
+                result["sample_count"],
+                f'{result["mean"]:.2f}',
+                f'{result["standard_deviation"]:.2f}',
+                f'{result["confidence_lower"]:.2f}',
+                f'{result["confidence_upper"]:.2f}',
             ])
 
 
@@ -144,12 +185,12 @@ def main():
         rows,
     )
 
-    mean_throughput = calculate_mean_throughput(
+    statistics = calculate_throughput_statistics(
         rows,
     )
 
-    write_mean_throughput(
-        mean_throughput,
+    write_throughput_statistics(
+        statistics,
     )
 
     print(
@@ -163,22 +204,27 @@ def main():
     )
 
     print()
-    print("Mean throughput by configuration:")
+    print("Throughput statistics by configuration:")
 
-    for key in sorted(mean_throughput):
+    for key in sorted(statistics):
         frequency, method, payload = key
+        result = statistics[key]
 
         print(
             f"{frequency} Hz, "
             f"{method}, "
             f"{payload} bytes: "
-            f"{mean_throughput[key]:.2f} B/s"
+            f"mean={result['mean']:.2f} B/s, "
+            f"std={result['standard_deviation']:.2f} B/s, "
+            f"95% CI=[{result['confidence_lower']:.2f}, "
+            f"{result['confidence_upper']:.2f}] B/s, "
+            f"n={result['sample_count']}"
         )
 
     print()
     print(
-        f"Saved mean throughput results to "
-        f"{MEAN_THROUGHPUT_FILE}"
+        f"Saved throughput statistics to "
+        f"{STATISTICS_FILE}"
     )
 
 

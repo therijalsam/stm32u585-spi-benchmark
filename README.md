@@ -12,14 +12,15 @@ DMA begins to outperform blocking SPI.
 
 ## Key Results
 
-At **8 MHz SPI with a 256-byte payload**:
+At **8 MHz SPI with a 256-byte payload** in a representative hardware run:
 
 | Transfer Method | Throughput | Avg. Elapsed Cycles / Transfer |
 |:----------------|-----------:|-------------------------------:|
 | Blocking | 287,211 B/s | 14,261 |
 | DMA | **853,390 B/s** | **4,800** |
 
-DMA achieved approximately **197% higher throughput** than blocking SPI.
+DMA achieved approximately **197% higher throughput** than blocking SPI in this
+representative run.
 
 The benchmark also found a blocking-to-DMA crossover between **16 and 24 bytes**
 at both **4 MHz and 8 MHz**.
@@ -36,10 +37,12 @@ at both **4 MHz and 8 MHz**.
 - DMA continued to scale strongly with SPI frequency.
 - Embassy tasks continued executing during DMA transfers but not during blocking transfers.
 - Cortex-M DWT cycle measurements closely matched expected elapsed core-clock cycles.
+- Repeated hardware experiments are analyzed independently from the representative single-run results.
+- Statistical analysis reports mean throughput, sample standard deviation, and a 95% confidence interval for every benchmark configuration.
 
-The performance values shown above are representative hardware measurements.
-Independent repeated runs are also collected and analyzed separately to measure
-the average behavior of each benchmark configuration.
+The performance values in the tables above are representative single-run
+hardware measurements. Repeated experiment results are stored separately and
+used for statistical analysis.
 
 ---
 
@@ -83,6 +86,9 @@ The framework measures:
 - application task concurrency during DMA
 - blocking vs DMA performance
 - automatic DMA crossover detection
+- repeated-run mean throughput
+- sample standard deviation
+- 95% confidence intervals
 
 The benchmark currently tests:
 
@@ -108,7 +114,7 @@ Iterations per configuration:
 100
 ```
 
-A complete run produces:
+A complete hardware run produces:
 
 ```text
 4 SPI frequencies
@@ -120,8 +126,8 @@ A complete run produces:
 72 benchmark measurements
 ```
 
-For research analysis, the complete benchmark is repeated independently
-30 times:
+For repeated statistical analysis, the complete benchmark is executed
+independently 30 times:
 
 ```text
 30 independent runs
@@ -372,7 +378,7 @@ implementation.
     ├── benchmark.csv
     ├── benchmark_runs.csv
     ├── benchmark_table.txt
-    ├── mean_throughput.csv
+    ├── throughput_statistics.csv
     ├── runs
     │   ├── benchmark_run_001.csv
     │   ├── benchmark_run_002.csv
@@ -439,7 +445,9 @@ implementation.
 - verifies that every run contains 72 measurements
 - groups measurements by SPI frequency, transfer method, and payload size
 - calculates mean throughput for each benchmark configuration
-- exports the calculated means to `results/mean_throughput.csv`
+- calculates sample standard deviation using the repeated hardware measurements
+- calculates a two-sided 95% confidence interval using Student's t distribution
+- exports statistical results to `results/throughput_statistics.csv`
 
 ---
 
@@ -506,7 +514,7 @@ run_id,spi_frequency_hz,method,payload_bytes,...
 2,1000000,blocking,4,...
 ```
 
-The current research dataset contains:
+The repeated research dataset contains:
 
 ```text
 30 independent runs
@@ -516,24 +524,30 @@ The current research dataset contains:
 2,160 benchmark measurements
 ```
 
-### Mean Throughput Results
+### Throughput Statistics
 
-Mean throughput across the independent runs is exported to:
+Statistical throughput results are exported to:
 
 ```text
-results/mean_throughput.csv
+results/throughput_statistics.csv
 ```
 
-The file contains one row for each of the 72 benchmark configurations:
+The file contains one row for each of the 72 benchmark configurations.
+
+Each row contains:
 
 ```text
 spi_frequency_hz
 method
 payload_bytes
+sample_count
 mean_throughput_bytes_per_second
+standard_deviation_bytes_per_second
+confidence_interval_95_lower_bytes_per_second
+confidence_interval_95_upper_bytes_per_second
 ```
 
-The mean is calculated independently for every combination of:
+Statistics are calculated independently for every combination of:
 
 ```text
 SPI frequency
@@ -543,14 +557,47 @@ transfer method
 payload size
 ```
 
+For the repeated experiments:
+
+```text
+sample count = 30
+```
+
+The standard deviation is the **sample standard deviation**.
+
+The 95% confidence interval is calculated using:
+
+```text
+mean ± t * (s / sqrt(n))
+```
+
+where:
+
+```text
+mean = sample mean throughput
+s    = sample standard deviation
+n    = number of independent runs
+t    = Student's t critical value
+```
+
+For 30 runs:
+
+```text
+n = 30
+degrees of freedom = 29
+```
+
+This provides both the average measured performance and an estimate of the
+uncertainty in that average.
+
 ---
 
 ## Generate Results
 
-Install Matplotlib:
+Install Matplotlib and SciPy:
 
 ```bash
-sudo apt install python3-matplotlib
+sudo apt install python3-matplotlib python3-scipy
 ```
 
 ### Single Benchmark Run
@@ -623,31 +670,98 @@ Run:
 python3 tools/analyze_results.py
 ```
 
-The analysis utility:
+The analysis utility performs:
 
 ```text
-loads results/benchmark_runs.csv
+results/benchmark_runs.csv
         ↓
-validates the dataset fields
+validate required fields
         ↓
-verifies 72 measurements per run
+verify 72 measurements per run
         ↓
-groups matching benchmark configurations
+group matching benchmark configurations
         ↓
-calculates mean throughput
+calculate mean throughput
         ↓
-writes results/mean_throughput.csv
+calculate sample standard deviation
+        ↓
+calculate standard error
+        ↓
+calculate 95% Student's t confidence interval
+        ↓
+results/throughput_statistics.csv
 ```
 
-For the current 30-run dataset, a successful analysis reports:
+For the 30-run dataset, a successful analysis reports:
 
 ```text
 Loaded 2160 benchmark measurements from 30 independent runs.
 Validated 30 runs with 72 measurements each.
 ```
 
-The resulting mean-throughput file contains 72 configurations plus one CSV
-header.
+The resulting statistics file contains:
+
+```text
+1 header
++
+72 benchmark configurations
+=
+73 lines
+```
+
+Verify with:
+
+```bash
+wc -l results/throughput_statistics.csv
+```
+
+Expected:
+
+```text
+73 results/throughput_statistics.csv
+```
+
+---
+
+## Statistical Method
+
+For a benchmark configuration with throughput measurements:
+
+```text
+x1, x2, x3, ..., xn
+```
+
+the arithmetic mean is:
+
+```text
+x̄ = (x1 + x2 + ... + xn) / n
+```
+
+The sample standard deviation is calculated using:
+
+```text
+s = sqrt(Σ(xi - x̄)^2 / (n - 1))
+```
+
+The standard error of the mean is:
+
+```text
+SE = s / sqrt(n)
+```
+
+The two-sided 95% confidence interval is:
+
+```text
+x̄ ± t(0.975, n - 1) × SE
+```
+
+Student's t distribution is used instead of assuming a fixed normal critical
+value because the mean and variability are estimated from a finite number of
+independent hardware runs.
+
+These statistics describe repeated measurements of the implemented benchmark.
+They should not be interpreted as guarantees for every STM32U585 application or
+every SPI peripheral configuration.
 
 ---
 
@@ -685,7 +799,7 @@ cargo run
 
 `probe-rs` flashes the STM32U585 and RTT output is displayed using `defmt`.
 
-Example result:
+Example representative result:
 
 ```text
 Requested SPI frequency: 8000000 Hz
@@ -749,6 +863,8 @@ used for direct firmware flashing.
 - defmt / RTT
 - Python
 - Python CSV processing
+- Python statistics
+- SciPy
 - Matplotlib
 - Git / GitHub
 
@@ -782,6 +898,8 @@ repeated experiment capture
 combined repeated-run dataset
 dataset validation
 mean throughput analysis
+sample standard deviation analysis
+95% confidence interval analysis
 ```
 
 Each major feature was built and tested on the STM32U585 before being merged
@@ -800,9 +918,13 @@ Rather than assuming DMA is always faster, the benchmark measures the trade-off
 experimentally across different transfer sizes and SPI frequencies.
 
 The repeated-run dataset extends the benchmark beyond a single hardware
-measurement by collecting multiple independent experiments and calculating
-average behavior for every tested configuration.
+measurement by collecting independent experiments and measuring both average
+performance and run-to-run variability.
 
-The results show that the answer depends strongly on payload size, peripheral
-frequency, software overhead, and the ability to overlap communication with
-other application work.
+Mean throughput describes the central measured performance, sample standard
+deviation describes variation between repeated runs, and the 95% confidence
+interval quantifies uncertainty in the estimated mean.
+
+The results show that the blocking-to-DMA trade-off depends strongly on payload
+size, peripheral frequency, software overhead, and the ability to overlap
+communication with other application work.

@@ -1,5 +1,6 @@
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -40,5 +41,23 @@ def run_single_experiment():
     print(f"Saved experiment to {output_file}")
 
 
+def run_experiments(run_count):
+    for run in range(1, run_count + 1):
+        print()
+        print(f"Starting experiment {run} of {run_count}")
+
+        run_single_experiment()
+
+
 if __name__ == "__main__":
-    run_single_experiment()
+    if len(sys.argv) != 2:
+        print("Usage: python3 tools/run_experiments.py <run_count>")
+        sys.exit(1)
+
+    run_count = int(sys.argv[1])
+
+    if run_count <= 0:
+        print("Run count must be greater than zero.")
+        sys.exit(1)
+
+    run_experiments(run_count)

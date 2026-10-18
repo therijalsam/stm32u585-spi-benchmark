@@ -9,6 +9,7 @@ from scipy.stats import t as student_t
 
 INPUT_FILE = Path("results/benchmark_runs.csv")
 STATISTICS_FILE = Path("results/throughput_statistics.csv")
+CROSSOVER_STATISTICS_FILE = Path("results/crossover_statistics.csv")
 
 EXPECTED_MEASUREMENTS_PER_RUN = 72
 CONFIDENCE_LEVEL = 0.95
@@ -142,6 +143,112 @@ def calculate_throughput_statistics(rows):
     return statistics
 
 
+def detect_run_crossovers(rows):
+    measurements = defaultdict(
+        lambda: defaultdict(dict)
+    )
+
+    for row in rows:
+        run_id = int(
+            row["run_id"]
+        )
+
+        frequency = int(
+            row["spi_frequency_hz"]
+        )
+
+        method = row["method"]
+
+        payload = int(
+            row["payload_bytes"]
+        )
+
+        throughput = int(
+            row["throughput_bytes_per_second"]
+        )
+
+        measurements[
+            (run_id, frequency)
+        ][method][payload] = throughput
+
+    crossovers = []
+
+    for key in sorted(measurements):
+        run_id, frequency = key
+        methods = measurements[key]
+
+        blocking = methods["blocking"]
+        dma = methods["dma"]
+
+        payloads = sorted(
+            set(blocking)
+            & set(dma)
+        )
+
+        crossover = None
+
+        for lower_payload, upper_payload in zip(
+            payloads,
+            payloads[1:],
+        ):
+            blocking_faster_at_lower = (
+                blocking[lower_payload]
+                >= dma[lower_payload]
+            )
+
+            dma_faster_at_upper = (
+                dma[upper_payload]
+                > blocking[upper_payload]
+            )
+
+            if (
+                blocking_faster_at_lower
+                and dma_faster_at_upper
+            ):
+                crossover = (
+                    lower_payload,
+                    upper_payload,
+                )
+
+                break
+
+        crossovers.append({
+            "run_id": run_id,
+            "frequency": frequency,
+            "crossover": crossover,
+        })
+
+    return crossovers
+
+
+def summarize_crossovers(crossovers):
+    target_frequencies = (
+        4_000_000,
+        8_000_000,
+    )
+
+    summary = {}
+
+    for frequency in target_frequencies:
+        frequency_results = [
+            result
+            for result in crossovers
+            if result["frequency"] == frequency
+        ]
+
+        counts = Counter(
+            result["crossover"]
+            for result in frequency_results
+        )
+
+        summary[frequency] = {
+            "total_runs": len(frequency_results),
+            "counts": counts,
+        }
+
+    return summary
+
+
 def write_throughput_statistics(statistics):
     with STATISTICS_FILE.open(
         "w",
@@ -178,6 +285,102 @@ def write_throughput_statistics(statistics):
             ])
 
 
+def write_crossover_statistics(summary):
+    with CROSSOVER_STATISTICS_FILE.open(
+        "w",
+        newline="",
+    ) as file:
+        writer = csv.writer(
+            file,
+        )
+
+        writer.writerow([
+            "spi_frequency_hz",
+            "crossover_lower_bytes",
+            "crossover_upper_bytes",
+            "run_count",
+            "total_runs",
+            "percentage",
+        ])
+
+        for frequency in sorted(summary):
+            total_runs = summary[frequency]["total_runs"]
+            counts = summary[frequency]["counts"]
+
+            sorted_counts = sorted(
+                counts.items(),
+                key=lambda item: (
+                    item[0] is None,
+                    item[0] or (0, 0),
+                ),
+            )
+
+            for crossover, count in sorted_counts:
+                if crossover is None:
+                    lower_payload = ""
+                    upper_payload = ""
+                else:
+                    lower_payload, upper_payload = crossover
+
+                percentage = (
+                    count
+                    / total_runs
+                    * 100
+                )
+
+                writer.writerow([
+                    frequency,
+                    lower_payload,
+                    upper_payload,
+                    count,
+                    total_runs,
+                    f"{percentage:.2f}",
+                ])
+
+
+def print_crossover_summary(summary):
+    print()
+    print("DMA crossover consistency:")
+
+    for frequency in sorted(summary):
+        total_runs = summary[frequency]["total_runs"]
+        counts = summary[frequency]["counts"]
+
+        print()
+        print(f"{frequency} Hz:")
+
+        sorted_counts = sorted(
+            counts.items(),
+            key=lambda item: (
+                item[0] is None,
+                item[0] or (0, 0),
+            ),
+        )
+
+        for crossover, count in sorted_counts:
+            percentage = (
+                count
+                / total_runs
+                * 100
+            )
+
+            if crossover is None:
+                crossover_text = "No crossover"
+            else:
+                lower_payload, upper_payload = crossover
+
+                crossover_text = (
+                    f"{lower_payload}-"
+                    f"{upper_payload} bytes"
+                )
+
+            print(
+                f"  {crossover_text}: "
+                f"{count}/{total_runs} runs "
+                f"({percentage:.2f}%)"
+            )
+
+
 def main():
     rows, run_ids = load_results()
 
@@ -189,8 +392,20 @@ def main():
         rows,
     )
 
+    crossovers = detect_run_crossovers(
+        rows,
+    )
+
+    crossover_summary = summarize_crossovers(
+        crossovers,
+    )
+
     write_throughput_statistics(
         statistics,
+    )
+
+    write_crossover_statistics(
+        crossover_summary,
     )
 
     print(
@@ -222,9 +437,46 @@ def main():
         )
 
     print()
+    print("Per-run DMA crossover intervals:")
+
+    for result in crossovers:
+        if result["frequency"] not in (
+            4_000_000,
+            8_000_000,
+        ):
+            continue
+
+        crossover = result["crossover"]
+
+        if crossover is None:
+            crossover_text = "none"
+        else:
+            lower_payload, upper_payload = crossover
+
+            crossover_text = (
+                f"{lower_payload}-"
+                f"{upper_payload} bytes"
+            )
+
+        print(
+            f"run={result['run_id']}, "
+            f"frequency={result['frequency']} Hz, "
+            f"crossover={crossover_text}"
+        )
+
+    print_crossover_summary(
+        crossover_summary,
+    )
+
+    print()
     print(
         f"Saved throughput statistics to "
         f"{STATISTICS_FILE}"
+    )
+
+    print(
+        f"Saved crossover statistics to "
+        f"{CROSSOVER_STATISTICS_FILE}"
     )
 
 

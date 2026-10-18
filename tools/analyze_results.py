@@ -1,9 +1,11 @@
 import csv
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
 
 
 INPUT_FILE = Path("results/benchmark_runs.csv")
+MEAN_THROUGHPUT_FILE = Path("results/mean_throughput.csv")
+
 EXPECTED_MEASUREMENTS_PER_RUN = 72
 
 REQUIRED_FIELDS = {
@@ -86,11 +88,68 @@ def validate_run_sizes(rows):
     return run_counts
 
 
+def calculate_mean_throughput(rows):
+    throughput_groups = defaultdict(list)
+
+    for row in rows:
+        key = (
+            int(row["spi_frequency_hz"]),
+            row["method"],
+            int(row["payload_bytes"]),
+        )
+
+        throughput_groups[key].append(
+            int(row["throughput_bytes_per_second"])
+        )
+
+    mean_throughput = {}
+
+    for key, values in throughput_groups.items():
+        mean_throughput[key] = sum(values) / len(values)
+
+    return mean_throughput
+
+
+def write_mean_throughput(mean_throughput):
+    with MEAN_THROUGHPUT_FILE.open(
+        "w",
+        newline="",
+    ) as file:
+        writer = csv.writer(
+            file,
+        )
+
+        writer.writerow([
+            "spi_frequency_hz",
+            "method",
+            "payload_bytes",
+            "mean_throughput_bytes_per_second",
+        ])
+
+        for key in sorted(mean_throughput):
+            frequency, method, payload = key
+
+            writer.writerow([
+                frequency,
+                method,
+                payload,
+                f"{mean_throughput[key]:.2f}",
+            ])
+
+
 def main():
     rows, run_ids = load_results()
 
     run_counts = validate_run_sizes(
         rows,
+    )
+
+    mean_throughput = calculate_mean_throughput(
+        rows,
+    )
+
+    write_mean_throughput(
+        mean_throughput,
     )
 
     print(
@@ -101,6 +160,25 @@ def main():
     print(
         f"Validated {len(run_counts)} runs with "
         f"{EXPECTED_MEASUREMENTS_PER_RUN} measurements each."
+    )
+
+    print()
+    print("Mean throughput by configuration:")
+
+    for key in sorted(mean_throughput):
+        frequency, method, payload = key
+
+        print(
+            f"{frequency} Hz, "
+            f"{method}, "
+            f"{payload} bytes: "
+            f"{mean_throughput[key]:.2f} B/s"
+        )
+
+    print()
+    print(
+        f"Saved mean throughput results to "
+        f"{MEAN_THROUGHPUT_FILE}"
     )
 
 

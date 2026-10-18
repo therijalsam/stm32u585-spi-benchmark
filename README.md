@@ -1,21 +1,33 @@
 # STM32U585 SPI Performance Benchmark
+
 Embedded Rust benchmarking framework for comparing **blocking SPI and DMA-backed SPI** on the STM32U585.
+
 Built and tested on the **MM6108-EKH05** using **Rust, Embassy, STM32U585, DMA, DWT hardware cycle counting, RTT, and probe-rs**.
+
 The framework measures transfer latency, throughput, timing variation, elapsed
 core cycles, task concurrency, SPI clock scaling, and the payload size where
 DMA begins to outperform blocking SPI.
+
 ---
+
 ## Key Results
+
 At **8 MHz SPI with a 256-byte payload**:
+
 | Transfer Method | Throughput | Avg. Elapsed Cycles / Transfer |
 |:----------------|-----------:|-------------------------------:|
 | Blocking | 287,211 B/s | 14,261 |
 | DMA | **853,390 B/s** | **4,800** |
+
 DMA achieved approximately **197% higher throughput** than blocking SPI.
+
 The benchmark also found a blocking-to-DMA crossover between **16 and 24 bytes**
 at both **4 MHz and 8 MHz**.
+
 ![8 MHz SPI Throughput](results/graphs/throughput_8mhz.png)
+
 ### Main Findings
+
 - Blocking SPI performs better for very small transfers.
 - DMA becomes significantly faster as payload size and SPI frequency increase.
 - At 1 MHz and 2 MHz, blocking remained faster across the tested payload range.
@@ -24,8 +36,15 @@ at both **4 MHz and 8 MHz**.
 - DMA continued to scale strongly with SPI frequency.
 - Embassy tasks continued executing during DMA transfers but not during blocking transfers.
 - Cortex-M DWT cycle measurements closely matched expected elapsed core-clock cycles.
+
+The performance values shown above are representative hardware measurements.
+Independent repeated runs are also collected and analyzed separately to measure
+the average behavior of each benchmark configuration.
+
 ---
+
 ## Hardware
+
 | Component | Configuration |
 |:----------|:--------------|
 | Board | MM6108-EKH05 |
@@ -34,17 +53,24 @@ at both **4 MHz and 8 MHz**.
 | System Clock | 16 MHz HSI |
 | SPI Peripheral | SPI1 |
 | Maximum Tested SPI Clock | 8 MHz |
+
 ### SPI1 Pins
+
 | Signal | Pin |
 |:-------|:----|
 | SCK | PE13 |
 | MISO | PE14 |
 | MOSI | PE15 |
 | CS | PE12 |
+
 Chip select is controlled in software using PE12.
+
 ---
+
 ## What the Benchmark Measures
+
 The framework measures:
+
 - transfer latency
 - aggregate transfer time
 - minimum and maximum transfer time
@@ -57,13 +83,16 @@ The framework measures:
 - application task concurrency during DMA
 - blocking vs DMA performance
 - automatic DMA crossover detection
+
 The benchmark currently tests:
+
 ```text
 SPI clocks:
 1 MHz
 2 MHz
 4 MHz
 8 MHz
+
 Payload sizes:
 4
 16
@@ -74,10 +103,13 @@ Payload sizes:
 56
 64
 256 bytes
+
 Iterations per configuration:
 100
 ```
+
 A complete run produces:
+
 ```text
 4 SPI frequencies
 ×
@@ -87,55 +119,92 @@ A complete run produces:
 =
 72 benchmark measurements
 ```
+
+For research analysis, the complete benchmark is repeated independently
+30 times:
+
+```text
+30 independent runs
+×
+72 measurements per run
+=
+2,160 measurements
+```
+
 ---
+
 ## Performance Results
+
 ### Blocking Throughput
+
 | SPI Clock | 4 B | 16 B | 64 B | 256 B |
 |----------:|----:|-----:|-----:|------:|
 | 1 MHz | 79,856 B/s | 109,656 B/s | 120,670 B/s | 123,909 B/s |
 | 2 MHz | 124,649 B/s | 199,750 B/s | 235,216 B/s | 246,118 B/s |
 | 4 MHz | 154,083 B/s | 237,706 B/s | 275,482 B/s | 286,828 B/s |
 | 8 MHz | 161,420 B/s | 242,314 B/s | 276,912 B/s | 287,211 B/s |
+
 ### DMA Throughput
+
 | SPI Clock | 4 B | 16 B | 64 B | 256 B |
 |----------:|----:|-----:|-----:|------:|
 | 1 MHz | 63,724 B/s | 100,927 B/s | 117,963 B/s | 122,150 B/s |
 | 2 MHz | 85,251 B/s | 169,294 B/s | 224,490 B/s | 239,918 B/s |
 | 4 MHz | 85,070 B/s | 221,514 B/s | 408,919 B/s | 472,307 B/s |
 | 8 MHz | 85,269 B/s | 221,208 B/s | 595,792 B/s | **853,390 B/s** |
+
 ### Blocking vs DMA
+
 | SPI Clock | 4 B | 16 B | 64 B | 256 B |
 |----------:|:----|:-----|:-----|:------|
 | 1 MHz | Blocking +25% | Blocking +8% | Blocking +2% | Blocking +1% |
 | 2 MHz | Blocking +46% | Blocking +17% | Blocking +4% | Blocking +2% |
 | 4 MHz | Blocking +81% | Blocking +7% | DMA +48% | DMA +64% |
 | 8 MHz | Blocking +89% | Blocking +9% | DMA +115% | **DMA +197%** |
+
 These results demonstrate that DMA is not automatically faster than blocking
 SPI. Transfer size and bus frequency determine whether the DMA setup and
 synchronization overhead is worthwhile.
+
 ---
+
 ## Throughput Visualization
+
 ### 1 MHz
+
 ![1 MHz SPI Throughput](results/graphs/throughput_1mhz.png)
+
 ### 2 MHz
+
 ![2 MHz SPI Throughput](results/graphs/throughput_2mhz.png)
+
 ### 4 MHz
+
 ![4 MHz SPI Throughput](results/graphs/throughput_4mhz.png)
+
 ### 8 MHz
+
 ![8 MHz SPI Throughput](results/graphs/throughput_8mhz.png)
+
 At 4 MHz and 8 MHz, the graphs clearly show the point where DMA begins
 outperforming blocking SPI.
+
 ---
+
 ## DMA Crossover Analysis
+
 Intermediate payload sizes were added specifically to identify the transition
 between blocking and DMA performance.
+
 | SPI Clock | Measured Crossover |
 |----------:|:-------------------|
 | 1 MHz | No crossover detected |
 | 2 MHz | No crossover detected |
 | 4 MHz | Between 16 and 24 bytes |
 | 8 MHz | Between 16 and 24 bytes |
+
 At 8 MHz:
+
 | Payload | Blocking | DMA | Faster |
 |--------:|---------:|----:|:-------|
 | 16 B | 242,314 B/s | 221,208 B/s | Blocking |
@@ -145,55 +214,87 @@ At 8 MHz:
 | 48 B | 272,680 B/s | 524,762 B/s | DMA |
 | 56 B | 275,143 B/s | 552,649 B/s | DMA |
 | 64 B | 276,912 B/s | 595,792 B/s | DMA |
+
 The framework reports an interval rather than an exact byte-level crossover
 because only configured payload sizes are measured.
+
 ---
+
 ## Cortex-M DWT Cycle Measurement
+
 The benchmark uses the Cortex-M **Data Watchpoint and Trace (DWT)** hardware
 cycle counter alongside microsecond timing.
+
 For each benchmark it records:
+
 - total elapsed core cycles
 - average elapsed core cycles per transfer
+
 ### 256-Byte Results
+
 | SPI Clock | Blocking Cycles / Transfer | DMA Cycles / Transfer |
 |----------:|---------------------------:|----------------------:|
 | 1 MHz | 33,056 | 33,532 |
 | 2 MHz | 16,643 | 17,073 |
 | 4 MHz | 14,280 | 8,672 |
 | 8 MHz | 14,261 | **4,800** |
+
 ### Cycle Graphs
+
 #### 1 MHz
+
 ![1 MHz Core Cycles](results/graphs/cycles_1mhz.png)
+
 #### 2 MHz
+
 ![2 MHz Core Cycles](results/graphs/cycles_2mhz.png)
+
 #### 4 MHz
+
 ![4 MHz Core Cycles](results/graphs/cycles_4mhz.png)
+
 #### 8 MHz
+
 ![8 MHz Core Cycles](results/graphs/cycles_8mhz.png)
+
 At 8 MHz, the 256-byte DMA benchmark transferred 25,600 bytes in approximately:
+
 ```text
 29,998 us
 ```
+
 The DWT recorded approximately:
+
 ```text
 480,019 elapsed core cycles
 ```
+
 With a 16 MHz system clock:
+
 ```text
 29,998 us × 16 cycles/us ≈ 479,968 cycles
 ```
+
 which closely matches the measured DWT value.
+
 ### DWT Interpretation
+
 The DWT measurement represents **elapsed processor clock cycles** between the
 beginning and end of the benchmark.
+
 For asynchronous DMA transfers, this includes periods where the benchmark task
 is suspended while waiting for DMA completion.
+
 Therefore, the value should not be interpreted as CPU utilization or as the
 number of CPU instructions executed by the DMA operation.
+
 ---
+
 ## DMA Concurrency
+
 A background Embassy task increments a counter approximately once per
 millisecond while benchmark operations execute.
+
 ```rust
 #[embassy_executor::task]
 async fn cpu_activity_task() {
@@ -203,20 +304,29 @@ async fn cpu_activity_task() {
     }
 }
 ```
+
 Measured task progress:
+
 | SPI Clock | Blocking | DMA |
 |----------:|---------:|----:|
 | 1 MHz | 0 | 854 |
 | 2 MHz | 0 | 454 |
 | 4 MHz | 0 | 257 |
 | 8 MHz | 0 | 178 |
+
 The background task made no progress while blocking transfers were active.
+
 During DMA transfers, the scheduler continued running other application work.
+
 This is evidence of concurrency, not a CPU utilization percentage.
+
 ---
+
 ## Architecture
+
 The benchmark separates hardware-specific SPI code from benchmark logic using
 small transfer interfaces.
+
 ```rust
 pub trait SpiTransfer {
     fn write(
@@ -224,6 +334,7 @@ pub trait SpiTransfer {
         data: &[u8],
     ) -> Result<(), embassy_stm32::spi::Error>;
 }
+
 pub trait DmaTransfer {
     async fn write_dma(
         &mut self,
@@ -231,9 +342,12 @@ pub trait DmaTransfer {
     ) -> Result<(), embassy_stm32::spi::Error>;
 }
 ```
+
 This allows the benchmark engine to operate independently of the underlying SPI
 implementation.
+
 ### Project Structure
+
 ```text
 .
 ├── Cargo.toml
@@ -251,13 +365,18 @@ implementation.
 │
 ├── tools
 │   ├── capture_csv.py
-│   └── run_experiments.py
+│   ├── run_experiments.py
+│   └── analyze_results.py
 │
 └── results
     ├── benchmark.csv
+    ├── benchmark_runs.csv
     ├── benchmark_table.txt
+    ├── mean_throughput.csv
     ├── runs
-    │   └── benchmark_run_###.csv
+    │   ├── benchmark_run_001.csv
+    │   ├── benchmark_run_002.csv
+    │   └── ...
     └── graphs
         ├── throughput_1mhz.png
         ├── throughput_2mhz.png
@@ -268,43 +387,71 @@ implementation.
         ├── cycles_4mhz.png
         └── cycles_8mhz.png
 ```
+
 ### Main Components
+
 `spi.rs`
+
 - SPI1 configuration
 - blocking transfers
 - DMA-backed asynchronous transfers
 - software chip select
 - runtime SPI frequency control
+
 `benchmark.rs`
+
 - repeated benchmark execution
 - timing statistics
 - throughput calculation
 - DWT cycle collection
+
 `cycle_counter.rs`
+
 - Cortex-M DWT initialization
 - hardware cycle-counter access
+
 `transfer.rs`
+
 - hardware-independent transfer interfaces
+
 `tools/capture_csv.py`
+
 - launches one complete hardware benchmark
 - captures RTT output
 - parses benchmark measurements
 - exports the latest run to CSV
 - generates readable tables
 - generates benchmark graphs
+
 `tools/run_experiments.py`
+
 - runs complete hardware benchmark experiments repeatedly
 - accepts the number of independent runs from the command line
 - preserves each completed run as a sequentially numbered CSV file
 - automatically selects the next available run number
 - prevents previous experiment runs from being overwritten
-- appends every completed run to a combined dataset with a run_id
+- appends every completed run to a combined dataset with a `run_id`
+
+`tools/analyze_results.py`
+
+- loads the combined repeated-run dataset
+- validates required benchmark fields
+- verifies that every run contains 72 measurements
+- groups measurements by SPI frequency, transfer method, and payload size
+- calculates mean throughput for each benchmark configuration
+- exports the calculated means to `results/mean_throughput.csv`
+
 ---
+
 ## Benchmark Data
-Complete raw measurements are available directly in the repository:
+
+Complete single-run measurements are available directly in the repository:
+
 - [Raw CSV](results/benchmark.csv)
 - [Formatted Benchmark Table](results/benchmark_table.txt)
-The CSV contains:
+
+The single-run CSV contains:
+
 ```text
 spi_frequency_hz
 method
@@ -319,123 +466,275 @@ min_us
 max_us
 throughput_bytes_per_second
 ```
-This makes the measurements usable for additional analysis outside the
-firmware.
+
 The latest single benchmark run is stored in:
+
 ```text
 results/benchmark.csv
 ```
-Independent repeated experiment runs are preserved separately under:
+
+### Repeated Research Dataset
+
+Independent experiment runs are preserved under:
+
 ```text
 results/runs/
 ```
+
 using sequential filenames:
+
 ```text
 benchmark_run_001.csv
 benchmark_run_002.csv
 benchmark_run_003.csv
 ...
+benchmark_run_030.csv
 ```
+
+All repeated-run measurements are also collected in:
+
+```text
+results/benchmark_runs.csv
+```
+
+The combined dataset includes a `run_id` column:
+
+```text
+run_id,spi_frequency_hz,method,payload_bytes,...
+1,1000000,blocking,4,...
+1,1000000,dma,4,...
+2,1000000,blocking,4,...
+```
+
+The current research dataset contains:
+
+```text
+30 independent runs
+×
+72 configurations
+=
+2,160 benchmark measurements
+```
+
+### Mean Throughput Results
+
+Mean throughput across the independent runs is exported to:
+
+```text
+results/mean_throughput.csv
+```
+
+The file contains one row for each of the 72 benchmark configurations:
+
+```text
+spi_frequency_hz
+method
+payload_bytes
+mean_throughput_bytes_per_second
+```
+
+The mean is calculated independently for every combination of:
+
+```text
+SPI frequency
++
+transfer method
++
+payload size
+```
+
 ---
+
 ## Generate Results
+
 Install Matplotlib:
+
 ```bash
 sudo apt install python3-matplotlib
 ```
+
 ### Single Benchmark Run
+
 Run:
+
 ```bash
 python3 tools/capture_csv.py
 ```
+
 The script runs the firmware through `cargo run`, captures RTT output, and
 automatically regenerates:
+
 ```text
 results/benchmark.csv
 results/benchmark_table.txt
+
 results/graphs/throughput_1mhz.png
 results/graphs/throughput_2mhz.png
 results/graphs/throughput_4mhz.png
 results/graphs/throughput_8mhz.png
+
 results/graphs/cycles_1mhz.png
 results/graphs/cycles_2mhz.png
 results/graphs/cycles_4mhz.png
 results/graphs/cycles_8mhz.png
 ```
+
 ### Repeated Experiment Runs
+
 Multiple independent hardware benchmark runs can be collected using:
+
 ```bash
 python3 tools/run_experiments.py 30
 ```
+
 The argument specifies how many complete benchmark runs to execute.
+
 Each run executes all 72 benchmark measurement configurations.
+
 Completed runs are preserved separately:
+
 ```text
 results/runs/benchmark_run_001.csv
 results/runs/benchmark_run_002.csv
 results/runs/benchmark_run_003.csv
 ...
 ```
+
 The next available run number is selected automatically, so existing experiment
 files are not overwritten.
+
+Each completed run is also appended to:
+
+```text
+results/benchmark_runs.csv
+```
+
+The combined dataset adds a `run_id` column so measurements from independent
+hardware runs remain distinguishable.
+
 `results/benchmark.csv` continues to contain the most recent single benchmark
 run generated by `capture_csv.py`.
-The repeated-run utility currently collects and preserves raw independent
-experiments. Statistical aggregation and analysis are handled separately.
+
+### Statistical Analysis
+
+Run:
+
+```bash
+python3 tools/analyze_results.py
+```
+
+The analysis utility:
+
+```text
+loads results/benchmark_runs.csv
+        ↓
+validates the dataset fields
+        ↓
+verifies 72 measurements per run
+        ↓
+groups matching benchmark configurations
+        ↓
+calculates mean throughput
+        ↓
+writes results/mean_throughput.csv
+```
+
+For the current 30-run dataset, a successful analysis reports:
+
+```text
+Loaded 2160 benchmark measurements from 30 independent runs.
+Validated 30 runs with 72 measurements each.
+```
+
+The resulting mean-throughput file contains 72 configurations plus one CSV
+header.
+
 ---
+
 ## Build
+
 Install the embedded Rust target:
+
 ```bash
 rustup target add thumbv8m.main-none-eabihf
 ```
+
 Build:
+
 ```bash
 cargo build
 ```
+
 Build optimized firmware:
+
 ```bash
 cargo build --release
 ```
+
 ---
+
 ## Flash and Run
+
 Connect the MM6108-EKH05 using ST-LINK.
+
 Run:
+
 ```bash
 cargo run
 ```
+
 `probe-rs` flashes the STM32U585 and RTT output is displayed using `defmt`.
+
 Example result:
+
 ```text
 Requested SPI frequency: 8000000 Hz
 Actual SPI frequency: 8000000 Hz
+
 Payload size: 256 bytes
 Iterations: 100
+
 Blocking throughput: 287211 bytes/s
 DMA throughput: 853390 bytes/s
+
 Faster method: DMA
 DMA throughput improvement: 197%
+
 DMA crossover detected between 16 and 24 bytes
 ```
+
 ---
+
 ## Release Firmware
+
 An optimized firmware image can be created with:
+
 ```bash
 cargo build --release
 ```
+
 The ELF executable is generated under:
+
 ```text
 target/thumbv8m.main-none-eabihf/release/
 ```
+
 Release artifacts can include:
+
 ```text
 spi-benchmark.elf
 spi-benchmark.bin
 spi-benchmark.hex
 benchmark.csv
 ```
+
 The ELF file preserves debugging information, while BIN and HEX files can be
 used for direct firmware flashing.
+
 ---
+
 ## Technologies
+
 - Rust
 - Embedded Rust
 - Embassy
@@ -449,12 +748,18 @@ used for direct firmware flashing.
 - ST-LINK
 - defmt / RTT
 - Python
+- Python CSV processing
 - Matplotlib
 - Git / GitHub
+
 ---
+
 ## Development Workflow
+
 The project was developed incrementally using feature branches.
+
 Major completed features include:
+
 ```text
 benchmark timing
 SPI initialization
@@ -474,16 +779,30 @@ DWT core-cycle measurement
 CSV export
 benchmark visualization
 repeated experiment capture
+combined repeated-run dataset
+dataset validation
+mean throughput analysis
 ```
+
 Each major feature was built and tested on the STM32U585 before being merged
 into `main`.
+
 ---
+
 ## Why This Project
+
 This project explores an important embedded-systems engineering question:
+
 > When does the additional complexity of DMA actually provide a measurable
 > performance advantage over a simple blocking peripheral transfer?
+
 Rather than assuming DMA is always faster, the benchmark measures the trade-off
 experimentally across different transfer sizes and SPI frequencies.
+
+The repeated-run dataset extends the benchmark beyond a single hardware
+measurement by collecting multiple independent experiments and calculating
+average behavior for every tested configuration.
+
 The results show that the answer depends strongly on payload size, peripheral
 frequency, software overhead, and the ability to overlap communication with
 other application work.

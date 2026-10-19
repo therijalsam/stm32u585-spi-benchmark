@@ -5,9 +5,29 @@ import sys
 from pathlib import Path
 
 
-LATEST_RESULT = Path("results/benchmark.csv")
-RUNS_DIRECTORY = Path("results/runs")
-COMBINED_RESULTS = Path("results/benchmark_runs.csv")
+REFINED_CROSSOVER = "--refined-crossover" in sys.argv[1:]
+
+if REFINED_CROSSOVER:
+    LATEST_RESULT = Path("results/refined_crossover.csv")
+    RUNS_DIRECTORY = Path("results/refined_runs")
+    COMBINED_RESULTS = Path("results/refined_crossover_runs.csv")
+    RUN_FILE_PREFIX = "refined_crossover_run"
+
+    CAPTURE_COMMAND = [
+        "python3",
+        "tools/capture_csv.py",
+        "--refined-crossover",
+    ]
+else:
+    LATEST_RESULT = Path("results/benchmark.csv")
+    RUNS_DIRECTORY = Path("results/runs")
+    COMBINED_RESULTS = Path("results/benchmark_runs.csv")
+    RUN_FILE_PREFIX = "benchmark_run"
+
+    CAPTURE_COMMAND = [
+        "python3",
+        "tools/capture_csv.py",
+    ]
 
 
 def next_run_file():
@@ -19,7 +39,9 @@ def next_run_file():
     run_number = 1
 
     while True:
-        output_file = RUNS_DIRECTORY / f"benchmark_run_{run_number:03d}.csv"
+        output_file = RUNS_DIRECTORY / (
+            f"{RUN_FILE_PREFIX}_{run_number:03d}.csv"
+        )
 
         if not output_file.exists():
             return output_file
@@ -67,7 +89,7 @@ def append_run_to_dataset(run_file):
 
 def run_single_experiment():
     subprocess.run(
-        ["python3", "tools/capture_csv.py"],
+        CAPTURE_COMMAND,
         check=True,
     )
 
@@ -95,14 +117,27 @@ def run_experiments(run_count):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python3 tools/run_experiments.py <run_count>")
+    arguments = [
+        argument
+        for argument in sys.argv[1:]
+        if argument != "--refined-crossover"
+    ]
+
+    if len(arguments) != 1:
+        print(
+            "Usage: python3 tools/run_experiments.py "
+            "<run_count> [--refined-crossover]"
+        )
         sys.exit(1)
 
-    run_count = int(sys.argv[1])
+    run_count = int(
+        arguments[0]
+    )
 
     if run_count <= 0:
         print("Run count must be greater than zero.")
         sys.exit(1)
 
-    run_experiments(run_count)
+    run_experiments(
+        run_count,
+    )

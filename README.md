@@ -111,8 +111,6 @@ Observed in:
 100%
 ```
 
----
-
 ### 8 MHz
 
 At 17 bytes:
@@ -326,8 +324,6 @@ In this representative run, DMA achieved approximately:
 
 than blocking SPI.
 
-![8 MHz SPI Throughput](results/graphs/throughput_8mhz.png)
-
 These values represent a single hardware run.
 
 Repeated-run statistical measurements are analyzed separately.
@@ -368,6 +364,60 @@ The broad benchmark demonstrated that:
 | 2 MHz | 85,251 B/s | 169,294 B/s | 224,490 B/s | 239,918 B/s |
 | 4 MHz | 85,070 B/s | 221,514 B/s | 408,919 B/s | 472,307 B/s |
 | 8 MHz | 85,269 B/s | 221,208 B/s | 595,792 B/s | **853,390 B/s** |
+
+---
+
+# Standard Throughput Graphs
+
+The following plots show how blocking and DMA throughput change with payload size at each tested SPI frequency.
+
+## 1 MHz
+
+![1 MHz SPI Throughput](results/graphs/throughput_1mhz.png)
+
+At 1 MHz, blocking SPI remains competitive because the SPI wire-transfer time dominates the overall transfer cost and DMA setup overhead provides little benefit.
+
+## 2 MHz
+
+![2 MHz SPI Throughput](results/graphs/throughput_2mhz.png)
+
+At 2 MHz, blocking SPI continues to perform strongly across the tested payload range.
+
+## 4 MHz
+
+![4 MHz SPI Throughput](results/graphs/throughput_4mhz.png)
+
+At 4 MHz, DMA begins to outperform blocking for sufficiently large payloads.
+
+The original payload set places this transition between:
+
+```text
+16 and 24 bytes
+```
+
+## 8 MHz
+
+![8 MHz SPI Throughput](results/graphs/throughput_8mhz.png)
+
+At 8 MHz, DMA scales strongly as payload size increases.
+
+For the representative 256-byte measurement:
+
+```text
+Blocking:
+287,211 B/s
+
+DMA:
+853,390 B/s
+```
+
+This corresponds to approximately:
+
+```text
+197% higher throughput
+```
+
+for DMA in that representative run.
 
 ---
 
@@ -434,19 +484,49 @@ No alternative crossover interval was observed in the 30-run refined dataset.
 
 The repeated refined measurements are visualized using mean throughput and 95% confidence intervals.
 
-## 4 MHz
+## 4 MHz Refined Crossover
 
 ![Refined 4 MHz Crossover](results/refined_statistical_graphs/refined_crossover_4mhz.png)
 
-The 4 MHz experiment shows blocking SPI ahead at 16 and 17 bytes, followed by DMA becoming faster beginning at 18 bytes.
+At 4 MHz, blocking SPI is faster at 16 and 17 bytes.
 
-## 8 MHz
+DMA becomes faster at 18 bytes and remains faster for the remaining tested payload sizes.
+
+The measured crossover interval was:
+
+```text
+17–18 bytes
+```
+
+in:
+
+```text
+30 / 30 runs
+100%
+```
+
+## 8 MHz Refined Crossover
 
 ![Refined 8 MHz Crossover](results/refined_statistical_graphs/refined_crossover_8mhz.png)
 
-The 8 MHz experiment shows the same transition, with blocking faster at 17 bytes and DMA faster beginning at 18 bytes.
+At 8 MHz, blocking SPI is also faster at 16 and 17 bytes.
 
-Together, these plots visually support the measured **17–18 byte crossover interval**.
+DMA becomes faster beginning at 18 bytes.
+
+The measured crossover interval was:
+
+```text
+17–18 bytes
+```
+
+in:
+
+```text
+30 / 30 runs
+100%
+```
+
+Together, the two refined statistical plots show that the measured transition is highly consistent at both tested high-speed SPI frequencies.
 
 ---
 
@@ -564,7 +644,31 @@ Representative 256-byte values:
 | 4 MHz | 14,280 | 8,672 |
 | 8 MHz | 14,261 | **4,800** |
 
-### Representative 8 MHz Core-Cycle Graph
+---
+
+# Standard Core-Cycle Graphs
+
+The following plots show average elapsed core-clock cycles per transfer for blocking and DMA operation.
+
+## 1 MHz
+
+![1 MHz Core Cycles](results/graphs/cycles_1mhz.png)
+
+At 1 MHz, transfer time is dominated by the SPI bus itself, so the difference between blocking and DMA elapsed intervals is relatively small.
+
+## 2 MHz
+
+![2 MHz Core Cycles](results/graphs/cycles_2mhz.png)
+
+At 2 MHz, the elapsed-cycle measurements begin to decrease as the SPI clock increases.
+
+## 4 MHz
+
+![4 MHz Core Cycles](results/graphs/cycles_4mhz.png)
+
+At 4 MHz, the DMA elapsed interval becomes substantially lower for larger payload sizes.
+
+## 8 MHz
 
 ![8 MHz Core Cycles](results/graphs/cycles_8mhz.png)
 
@@ -752,16 +856,26 @@ The original standard benchmark is preserved unchanged while the refined mode pr
 
 The repository keeps the complete set of generated plots under `results/`.
 
-The README directly displays the most important figures:
+The README displays all standard throughput plots, all standard core-cycle plots, and both refined statistical crossover plots.
+
+Embedded figures:
 
 ```text
+results/graphs/throughput_1mhz.png
+results/graphs/throughput_2mhz.png
+results/graphs/throughput_4mhz.png
 results/graphs/throughput_8mhz.png
+
+results/graphs/cycles_1mhz.png
+results/graphs/cycles_2mhz.png
+results/graphs/cycles_4mhz.png
 results/graphs/cycles_8mhz.png
+
 results/refined_statistical_graphs/refined_crossover_4mhz.png
 results/refined_statistical_graphs/refined_crossover_8mhz.png
 ```
 
-The remaining plots are still preserved in the repository for complete experiment inspection.
+Project structure:
 
 ```text
 .

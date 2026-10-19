@@ -1,15 +1,39 @@
 import csv
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 from matplotlib.ticker import StrMethodFormatter
 
 
-OUTPUT_FILE = Path("results/benchmark.csv")
-TABLE_FILE = Path("results/benchmark_table.txt")
-GRAPH_DIRECTORY = Path("results/graphs")
+REFINED_CROSSOVER = "--refined-crossover" in sys.argv[1:]
+
+if REFINED_CROSSOVER:
+    OUTPUT_FILE = Path("results/refined_crossover.csv")
+    TABLE_FILE = Path("results/refined_crossover_table.txt")
+    GRAPH_DIRECTORY = Path("results/refined_graphs")
+
+    EXPECTED_ROWS = 36
+
+    CARGO_COMMAND = [
+        "cargo",
+        "run",
+        "--features",
+        "refined-crossover",
+    ]
+else:
+    OUTPUT_FILE = Path("results/benchmark.csv")
+    TABLE_FILE = Path("results/benchmark_table.txt")
+    GRAPH_DIRECTORY = Path("results/graphs")
+
+    EXPECTED_ROWS = 72
+
+    CARGO_COMMAND = [
+        "cargo",
+        "run",
+    ]
 
 FIELDNAMES = [
     "spi_frequency_hz",
@@ -329,7 +353,7 @@ def main():
     )
 
     process = subprocess.Popen(
-        ["cargo", "run"],
+        CARGO_COMMAND,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -473,14 +497,13 @@ def main():
     print(f"Saved formatted benchmark table to {TABLE_FILE}")
     print(f"Saved benchmark graphs to {GRAPH_DIRECTORY}")
 
-    expected_rows = 72
-
-    if len(rows) == expected_rows:
+    if len(rows) == EXPECTED_ROWS:
         print("Benchmark export completed successfully.")
     else:
         print(
-            f"Warning: expected {expected_rows} rows but captured {len(rows)}."
+            f"Error: expected {EXPECTED_ROWS} rows but captured {len(rows)}."
         )
+        sys.exit(1)
 
 
 if __name__ == "__main__":

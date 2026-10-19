@@ -20,9 +20,17 @@ use transfer::{DmaTransfer, SpiTransfer};
 
 static CPU_ACTIVITY: AtomicU32 = AtomicU32::new(0);
 
+#[cfg(not(feature = "refined-crossover"))]
 const SPI_FREQUENCIES: [u32; 4] = [1_000_000, 2_000_000, 4_000_000, 8_000_000];
 
+#[cfg(feature = "refined-crossover")]
+const SPI_FREQUENCIES: [u32; 2] = [4_000_000, 8_000_000];
+
+#[cfg(not(feature = "refined-crossover"))]
 const PAYLOAD_SIZES: [usize; 9] = [4, 16, 24, 32, 40, 48, 56, 64, 256];
+
+#[cfg(feature = "refined-crossover")]
+const PAYLOAD_SIZES: [usize; 9] = [16, 17, 18, 19, 20, 21, 22, 23, 24];
 
 #[embassy_executor::task]
 async fn cpu_activity_task() {

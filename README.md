@@ -2,53 +2,172 @@
 
 Embedded Rust benchmarking framework for comparing **blocking SPI and DMA-backed SPI** on the STM32U585.
 
-Built and tested on the **MM6108-EKH05** using **Rust, Embassy, STM32U585, DMA, DWT hardware cycle counting, RTT, probe-rs, and Python-based statistical analysis**.
+Built and tested on the **MM6108-EKH05** using **Rust, Embassy, STM32U585, DMA, Cortex-M DWT cycle counting, RTT, probe-rs, and Python-based statistical analysis**.
 
-The framework measures transfer latency, throughput, timing variation, elapsed
-core cycles, task concurrency, SPI clock scaling, blocking-to-DMA crossover
-behavior, and repeated-run statistical performance.
+The project investigates an important embedded-systems performance question:
 
----
+> At what payload size does DMA begin providing a measurable performance advantage over blocking SPI?
 
-## Key Results
-
-In a representative hardware run at **8 MHz SPI with a 256-byte payload**:
-
-| Transfer Method | Throughput | Avg. Elapsed Cycles / Transfer |
-|:----------------|-----------:|-------------------------------:|
-| Blocking | 287,211 B/s | 14,261 |
-| DMA | **853,390 B/s** | **4,800** |
-
-In that representative run, DMA achieved approximately **197% higher
-throughput** than blocking SPI.
-
-The benchmark also observed a blocking-to-DMA crossover between **16 and
-24 bytes** at both **4 MHz and 8 MHz**.
-
-![8 MHz SPI Throughput](results/graphs/throughput_8mhz.png)
-
-These values describe a representative single benchmark run.
-
-For research analysis, the complete 72-configuration benchmark is repeated
-independently 30 times. Mean throughput, sample standard deviation, 95%
-confidence intervals, and crossover consistency are calculated from the
-repeated-run dataset.
+The benchmark evaluates this question across several SPI frequencies, payload
+sizes, and repeated independent hardware experiments.
 
 ---
 
-## Main Findings
+## Key Result
 
-- Blocking SPI performs better for very small transfers.
-- DMA becomes significantly faster as payload size and SPI frequency increase.
-- At 1 MHz and 2 MHz, blocking remained faster across the tested payload range in the representative run.
-- At 4 MHz and 8 MHz, DMA overtook blocking between tested payload sizes.
-- Blocking throughput began to plateau at higher SPI clock frequencies.
-- DMA continued to scale strongly with SPI frequency.
-- Embassy tasks continued executing while asynchronous DMA transfers were waiting for completion.
-- The background task did not progress while blocking transfers were active.
-- Cortex-M DWT measurements closely matched expected elapsed core-clock cycles.
-- Repeated-run statistical analysis measures both average performance and run-to-run variability.
-- Blocking-to-DMA crossover intervals are evaluated independently for each hardware run.
+The refined experiment identified a highly consistent blocking-to-DMA crossover.
+
+At both:
+
+```text
+4 MHz
+8 MHz
+```
+
+blocking SPI remained faster at:
+
+```text
+17 bytes
+```
+
+while DMA became faster at:
+
+```text
+18 bytes
+```
+
+Across **30 independent refined benchmark runs**, the detected crossover was:
+
+| SPI Frequency | Crossover Interval | Runs | Consistency |
+|--------------:|:-------------------|-----:|------------:|
+| 4 MHz | 17–18 bytes | 30 / 30 | **100%** |
+| 8 MHz | 17–18 bytes | 30 / 30 | **100%** |
+
+The paired statistical analysis independently supports this result.
+
+At both frequencies:
+
+```text
+17 bytes:
+95% confidence interval for DMA − Blocking < 0
+→ Blocking statistically faster
+
+18 bytes:
+95% confidence interval for DMA − Blocking > 0
+→ DMA statistically faster
+```
+
+Therefore:
+
+> **18 bytes is the first tested payload size with a statistically supported DMA throughput advantage at both 4 MHz and 8 MHz.**
+
+---
+
+## Refined Crossover Result
+
+### 4 MHz
+
+At 17 bytes:
+
+```text
+Mean DMA − Blocking throughput:
+-5,109.20 B/s
+
+95% confidence interval:
+[-5,113.78, -5,104.62] B/s
+```
+
+The entire confidence interval is below zero.
+
+Therefore:
+
+```text
+Blocking faster
+```
+
+At 18 bytes:
+
+```text
+Mean DMA − Blocking throughput:
++6,142.00 B/s
+
+95% confidence interval:
+[6,142.00, 6,142.00] B/s
+```
+
+The entire confidence interval is above zero.
+
+Therefore:
+
+```text
+DMA faster
+```
+
+Measured crossover:
+
+```text
+17–18 bytes
+```
+
+Observed in:
+
+```text
+30 / 30 runs
+100%
+```
+
+---
+
+### 8 MHz
+
+At 17 bytes:
+
+```text
+Mean DMA − Blocking throughput:
+-9,209.47 B/s
+
+95% confidence interval:
+[-9,233.75, -9,185.19] B/s
+```
+
+The entire confidence interval is below zero.
+
+Therefore:
+
+```text
+Blocking faster
+```
+
+At 18 bytes:
+
+```text
+Mean DMA − Blocking throughput:
++2,129.53 B/s
+
+95% confidence interval:
+[2,053.46, 2,205.60] B/s
+```
+
+The entire confidence interval is above zero.
+
+Therefore:
+
+```text
+DMA faster
+```
+
+Measured crossover:
+
+```text
+17–18 bytes
+```
+
+Observed in:
+
+```text
+30 / 30 runs
+100%
+```
 
 ---
 
@@ -58,7 +177,7 @@ repeated-run dataset.
 |:----------|:--------------|
 | Board | MM6108-EKH05 |
 | MCU | STM32U585AI |
-| Core | ARM Cortex-M33 |
+| CPU Core | ARM Cortex-M33 |
 | Debug Probe | ST-LINK V3 |
 | System Clock | 16 MHz HSI |
 | SPI Peripheral | SPI1 |
@@ -73,22 +192,30 @@ repeated-run dataset.
 | MOSI | PE15 |
 | CS | PE12 |
 
-Chip select is controlled in software using PE12.
+Chip select is controlled in software through PE12.
 
 ---
 
-## Benchmark Configuration
+# Benchmark Experiments
 
-The benchmark currently tests:
+The project contains two related experiments.
+
+## Standard Benchmark
+
+The standard benchmark evaluates broad SPI scaling behavior.
+
+SPI frequencies:
 
 ```text
-SPI frequencies:
 1 MHz
 2 MHz
 4 MHz
 8 MHz
+```
 
 Payload sizes:
+
+```text
 4
 16
 24
@@ -98,74 +225,144 @@ Payload sizes:
 56
 64
 256 bytes
+```
 
 Transfer methods:
-blocking
-DMA
 
-Iterations per configuration:
+```text
+Blocking
+DMA
+```
+
+Iterations per benchmark configuration:
+
+```text
 100
 ```
 
-One complete hardware benchmark contains:
+One complete standard benchmark contains:
 
 ```text
-4 SPI frequencies
+4 frequencies
 ×
 9 payload sizes
 ×
 2 transfer methods
 =
-72 benchmark measurements
+72 measurements
 ```
 
-The repeated research experiment contains:
+Thirty independent standard runs contain:
 
 ```text
-30 independent runs
-×
-72 measurements
+30 × 72
 =
-2,160 benchmark measurements
+2,160 measurements
 ```
 
 ---
 
-## What the Benchmark Measures
+## Refined Crossover Benchmark
 
-The firmware benchmark measures:
+The refined experiment focuses specifically on the crossover region identified
+by the standard benchmark.
 
-- aggregate transfer time
-- average transfer time
-- minimum transfer time
-- maximum transfer time
-- throughput
-- total transferred bytes
-- total elapsed Cortex-M cycles
-- average elapsed cycles per transfer
-- blocking SPI performance
-- DMA-backed SPI performance
-- multiple payload sizes
-- multiple SPI frequencies
-- blocking-to-DMA crossover behavior
-- application task concurrency during DMA transfers
+SPI frequencies:
 
-The host analysis additionally measures:
+```text
+4 MHz
+8 MHz
+```
 
-- repeated-run mean throughput
-- sample standard deviation
-- 95% confidence interval for mean throughput
-- per-run blocking-to-DMA crossover interval
-- crossover interval frequency
-- crossover consistency percentage
+Payload sizes:
+
+```text
+16
+17
+18
+19
+20
+21
+22
+23
+24 bytes
+```
+
+Transfer methods:
+
+```text
+Blocking
+DMA
+```
+
+One refined run contains:
+
+```text
+2 frequencies
+×
+9 payload sizes
+×
+2 transfer methods
+=
+36 measurements
+```
+
+Thirty independent refined runs contain:
+
+```text
+30 × 36
+=
+1,080 measurements
+```
+
+This one-byte payload resolution allows the blocking-to-DMA transition to be
+localized much more precisely than the original benchmark.
 
 ---
 
-## Representative Performance Results
+# Representative Standard Benchmark Results
 
-The following tables show results from a representative hardware run.
+In a representative hardware run at **8 MHz with a 256-byte payload**:
 
-### Blocking Throughput
+| Transfer Method | Throughput | Avg. Elapsed Cycles / Transfer |
+|:----------------|-----------:|-------------------------------:|
+| Blocking | 287,211 B/s | 14,261 |
+| DMA | **853,390 B/s** | **4,800** |
+
+In this representative run, DMA achieved approximately:
+
+```text
+197% higher throughput
+```
+
+than blocking SPI.
+
+![8 MHz SPI Throughput](results/graphs/throughput_8mhz.png)
+
+These values represent a single hardware run.
+
+Repeated-run statistical measurements are analyzed separately.
+
+---
+
+# Standard Benchmark Findings
+
+The broad benchmark demonstrated that:
+
+- Blocking SPI performs well for very small transfers.
+- DMA overhead can make DMA slower than blocking for small payloads.
+- DMA becomes increasingly beneficial as payload size increases.
+- DMA benefits increase at higher SPI frequencies.
+- Blocking throughput begins to plateau as software overhead becomes more significant.
+- DMA continues scaling more strongly at higher SPI frequencies.
+- At 4 MHz and 8 MHz, the original payload set placed the crossover between 16 and 24 bytes.
+- Asynchronous DMA allows the Embassy executor to schedule other tasks while the transfer is waiting for completion.
+
+---
+
+# Representative Throughput Results
+
+## Blocking Throughput
 
 | SPI Clock | 4 B | 16 B | 64 B | 256 B |
 |----------:|----:|-----:|-----:|------:|
@@ -174,7 +371,7 @@ The following tables show results from a representative hardware run.
 | 4 MHz | 154,083 B/s | 237,706 B/s | 275,482 B/s | 286,828 B/s |
 | 8 MHz | 161,420 B/s | 242,314 B/s | 276,912 B/s | 287,211 B/s |
 
-### DMA Throughput
+## DMA Throughput
 
 | SPI Clock | 4 B | 16 B | 64 B | 256 B |
 |----------:|----:|-----:|-----:|------:|
@@ -183,148 +380,193 @@ The following tables show results from a representative hardware run.
 | 4 MHz | 85,070 B/s | 221,514 B/s | 408,919 B/s | 472,307 B/s |
 | 8 MHz | 85,269 B/s | 221,208 B/s | 595,792 B/s | **853,390 B/s** |
 
-### Blocking vs DMA
+---
 
-| SPI Clock | 4 B | 16 B | 64 B | 256 B |
-|----------:|:----|:-----|:-----|:------|
-| 1 MHz | Blocking +25% | Blocking +8% | Blocking +2% | Blocking +1% |
-| 2 MHz | Blocking +46% | Blocking +17% | Blocking +4% | Blocking +2% |
-| 4 MHz | Blocking +81% | Blocking +7% | DMA +48% | DMA +64% |
-| 8 MHz | Blocking +89% | Blocking +9% | DMA +115% | **DMA +197%** |
+# DMA Crossover Analysis
 
-The results demonstrate that DMA is not automatically faster than blocking
-SPI.
+The original benchmark payload sizes included:
 
-For small transfers, DMA setup and synchronization overhead can exceed the
-benefit of offloading the transfer.
+```text
+16 bytes
+24 bytes
+```
 
-As payload size and SPI frequency increase, DMA becomes progressively more
-advantageous.
+but did not include the byte values between them.
+
+The standard experiment therefore identified the crossover only as:
+
+```text
+4 MHz:
+16–24 bytes
+
+8 MHz:
+16–24 bytes
+```
+
+The refined experiment subsequently tested every byte between these values.
 
 ---
 
-## Throughput Visualization
+# Refined Crossover Consistency
 
-### 1 MHz
+The measured refined crossover distribution is stored in:
 
-![1 MHz SPI Throughput](results/graphs/throughput_1mhz.png)
+```text
+results/refined_crossover_statistics.csv
+```
 
-### 2 MHz
+The experiment produced:
 
-![2 MHz SPI Throughput](results/graphs/throughput_2mhz.png)
+```text
+spi_frequency_hz,crossover_lower_bytes,crossover_upper_bytes,run_count,total_runs,percentage
 
-### 4 MHz
+4000000,17,18,30,30,100.00
+8000000,17,18,30,30,100.00
+```
 
-![4 MHz SPI Throughput](results/graphs/throughput_4mhz.png)
+This means the same crossover interval appeared in every independent refined
+experiment:
 
-### 8 MHz
+```text
+4 MHz:
+17–18 bytes
+30/30 runs
 
-![8 MHz SPI Throughput](results/graphs/throughput_8mhz.png)
+8 MHz:
+17–18 bytes
+30/30 runs
+```
+
+No alternative crossover interval was observed in the 30-run refined dataset.
 
 ---
 
-## DMA Crossover Analysis
+# Paired Blocking-vs-DMA Analysis
 
-The benchmark includes intermediate payload sizes to observe the transition
-between blocking and DMA performance.
+The refined analysis compares blocking and DMA measurements from the same:
 
-The representative run produced:
+```text
+run
+frequency
+payload
+```
 
-| SPI Clock | Observed Crossover |
-|----------:|:-------------------|
-| 1 MHz | No crossover detected |
-| 2 MHz | No crossover detected |
-| 4 MHz | Between 16 and 24 bytes |
-| 8 MHz | Between 16 and 24 bytes |
+The analyzed quantity is:
 
-At 8 MHz:
+```text
+DMA throughput - Blocking throughput
+```
 
-| Payload | Blocking | DMA | Faster |
-|--------:|---------:|----:|:-------|
-| 16 B | 242,314 B/s | 221,208 B/s | Blocking |
-| 24 B | 256,602 B/s | 330,487 B/s | DMA |
-| 32 B | 264,397 B/s | 413,597 B/s | DMA |
-| 40 B | 269,305 B/s | 474,383 B/s | DMA |
-| 48 B | 272,680 B/s | 524,762 B/s | DMA |
-| 56 B | 275,143 B/s | 552,649 B/s | DMA |
-| 64 B | 276,912 B/s | 595,792 B/s | DMA |
+Interpretation:
 
-The framework reports a crossover interval rather than an exact threshold
-because only explicitly configured payload sizes are measured.
+```text
+Difference < 0
+→ Blocking faster
+
+Difference > 0
+→ DMA faster
+```
+
+More importantly, the analysis calculates a 95% confidence interval for the
+paired difference.
+
+If the entire interval is below zero:
+
+```text
+Blocking faster
+```
+
+If the entire interval is above zero:
+
+```text
+DMA faster
+```
+
+If the interval crosses zero:
+
+```text
+Difference uncertain at the 95% confidence level
+```
 
 ---
 
-## Repeated-Run Crossover Analysis
+# Refined Paired Results
 
-The crossover detector is also applied independently to every repeated hardware
-run.
+## 4 MHz
 
-For each combination of:
+| Payload | Mean DMA − Blocking | 95% CI | Interpretation |
+|--------:|--------------------:|:-------|:---------------|
+| 16 B | -15,695.90 B/s | [-15,703.06, -15,688.74] | Blocking faster |
+| 17 B | -5,109.20 B/s | [-5,113.78, -5,104.62] | Blocking faster |
+| 18 B | +6,142.00 B/s | [6,142.00, 6,142.00] | DMA faster |
+| 19 B | +17,657.83 B/s | [17,643.35, 17,672.32] | DMA faster |
+| 20 B | +28,991.27 B/s | [28,981.62, 29,000.92] | DMA faster |
+| 21 B | +41,566.67 B/s | [41,559.51, 41,573.83] | DMA faster |
+| 22 B | +47,584.43 B/s | [47,483.72, 47,685.15] | DMA faster |
+| 23 B | +47,715.17 B/s | [47,711.51, 47,718.83] | DMA faster |
+| 24 B | +52,700.40 B/s | [52,693.49, 52,707.31] | DMA faster |
 
-```text
-run_id
-+
-SPI frequency
-```
-
-the analysis compares blocking and DMA throughput across increasing payload
-sizes.
-
-A crossover is recorded when:
-
-```text
-blocking throughput >= DMA throughput
-```
-
-at one measured payload size, followed by:
+First tested payload with statistically supported DMA advantage:
 
 ```text
-DMA throughput > blocking throughput
+18 bytes
 ```
-
-at the next measured payload size.
-
-The repeated-run analysis currently summarizes crossover behavior at:
-
-```text
-4 MHz
-8 MHz
-```
-
-The complete measured crossover distribution is exported to:
-
-```text
-results/crossover_statistics.csv
-```
-
-The file contains:
-
-```text
-spi_frequency_hz
-crossover_lower_bytes
-crossover_upper_bytes
-run_count
-total_runs
-percentage
-```
-
-This allows the single-run crossover observation to be evaluated for
-consistency across independent experiments instead of assuming one run
-represents all hardware behavior.
 
 ---
 
-## Cortex-M DWT Cycle Measurement
+## 8 MHz
 
-The benchmark uses the Cortex-M **Data Watchpoint and Trace (DWT)** cycle
-counter alongside microsecond timing.
+| Payload | Mean DMA − Blocking | 95% CI | Interpretation |
+|--------:|--------------------:|:-------|:---------------|
+| 16 B | -20,268.73 B/s | [-20,336.44, -20,201.03] | Blocking faster |
+| 17 B | -9,209.47 B/s | [-9,233.75, -9,185.19] | Blocking faster |
+| 18 B | +2,129.53 B/s | [2,053.46, 2,205.60] | DMA faster |
+| 19 B | +13,580.30 B/s | [13,517.66, 13,642.94] | DMA faster |
+| 20 B | +25,212.67 B/s | [25,139.50, 25,285.83] | DMA faster |
+| 21 B | +38,202.70 B/s | [38,191.91, 38,213.49] | DMA faster |
+| 22 B | +50,133.17 B/s | [49,993.48, 50,272.85] | DMA faster |
+| 23 B | +62,373.20 B/s | [62,353.56, 62,392.84] | DMA faster |
+| 24 B | +74,288.87 B/s | [74,168.32, 74,409.42] | DMA faster |
 
-For every benchmark configuration it records:
+First tested payload with statistically supported DMA advantage:
 
-- total elapsed core cycles
-- average elapsed core cycles per transfer
+```text
+18 bytes
+```
 
-### Representative 256-Byte Results
+---
+
+# Refined Statistical Graphs
+
+The repeated refined measurements are visualized using mean throughput and
+95% confidence intervals.
+
+## 4 MHz
+
+![Refined 4 MHz Crossover](results/refined_statistical_graphs/refined_crossover_4mhz.png)
+
+## 8 MHz
+
+![Refined 8 MHz Crossover](results/refined_statistical_graphs/refined_crossover_8mhz.png)
+
+These plots provide a visual representation of the transition between blocking
+and DMA performance across the 16–24 byte range.
+
+---
+
+# Cortex-M DWT Cycle Measurement
+
+The benchmark uses the Cortex-M **Data Watchpoint and Trace (DWT)** hardware
+cycle counter.
+
+For each benchmark configuration it records:
+
+```text
+total elapsed core cycles
+average elapsed core cycles per transfer
+```
+
+Representative 256-byte values:
 
 | SPI Clock | Blocking Cycles / Transfer | DMA Cycles / Transfer |
 |----------:|---------------------------:|----------------------:|
@@ -333,74 +575,77 @@ For every benchmark configuration it records:
 | 4 MHz | 14,280 | 8,672 |
 | 8 MHz | 14,261 | **4,800** |
 
-### Cycle Graphs
+At 8 MHz, a representative 256-byte DMA benchmark transferred:
 
-#### 1 MHz
+```text
+25,600 bytes
+```
 
-![1 MHz Core Cycles](results/graphs/cycles_1mhz.png)
-
-#### 2 MHz
-
-![2 MHz Core Cycles](results/graphs/cycles_2mhz.png)
-
-#### 4 MHz
-
-![4 MHz Core Cycles](results/graphs/cycles_4mhz.png)
-
-#### 8 MHz
-
-![8 MHz Core Cycles](results/graphs/cycles_8mhz.png)
-
-At 8 MHz, the representative 256-byte DMA benchmark transferred 25,600 bytes
 in approximately:
 
 ```text
 29,998 us
 ```
 
-The DWT recorded approximately:
+The DWT measured approximately:
 
 ```text
-480,019 elapsed core cycles
+480,019 cycles
 ```
 
-With a 16 MHz system clock:
+At a 16 MHz system clock:
 
 ```text
-29,998 us × 16 cycles/us ≈ 479,968 cycles
+29,998 us × 16 cycles/us
+≈
+479,968 cycles
 ```
 
-which closely matches the measured DWT value.
-
-### DWT Interpretation
-
-The DWT value represents **elapsed core-clock cycles** between the beginning and
-end of the measured benchmark interval.
-
-During asynchronous DMA transfers, this interval includes periods where the
-benchmark task is suspended while waiting for DMA completion.
-
-Therefore, the DWT measurement is not interpreted as CPU utilization and does
-not represent only the instructions executed directly by the benchmark task.
+which closely matches the measured value.
 
 ---
 
-## DMA Concurrency
+# DWT Interpretation
+
+The DWT measurement represents elapsed processor clock cycles between the
+beginning and end of the benchmark interval.
+
+For asynchronous DMA transfers, the measured interval includes periods where
+the benchmark task is suspended while waiting for DMA completion.
+
+Therefore:
+
+```text
+DWT elapsed cycles ≠ CPU utilization
+```
+
+and:
+
+```text
+DWT elapsed cycles ≠ CPU instructions executed by DMA
+```
+
+The measurement represents elapsed core-clock time.
+
+---
+
+# DMA Concurrency
 
 A background Embassy task increments a counter approximately once per
-millisecond while the benchmark executes.
+millisecond:
 
 ```rust
 #[embassy_executor::task]
 async fn cpu_activity_task() {
     loop {
         CPU_ACTIVITY.fetch_add(1, Ordering::Relaxed);
+
         Timer::after_millis(1).await;
     }
 }
 ```
 
-Representative task progress:
+Representative progress:
 
 | SPI Clock | Blocking | DMA |
 |----------:|---------:|----:|
@@ -411,19 +656,19 @@ Representative task progress:
 
 The background task made no progress while blocking transfers were active.
 
-During asynchronous DMA transfers, the executor was able to schedule other
-application work while the transfer waited for completion.
+During asynchronous DMA transfers, other application tasks continued making
+progress.
 
-This demonstrates concurrency.
+This demonstrates task concurrency.
 
 It should not be interpreted as a CPU utilization percentage.
 
 ---
 
-## Firmware Architecture
+# Firmware Architecture
 
-The project separates hardware-specific SPI implementation from benchmark
-logic through small transfer interfaces.
+The benchmark separates hardware-specific SPI functionality from benchmark
+logic.
 
 ```rust
 pub trait SpiTransfer {
@@ -441,16 +686,83 @@ pub trait DmaTransfer {
 }
 ```
 
-The blocking interface uses the synchronous SPI implementation.
+The blocking implementation performs synchronous SPI communication.
 
-The DMA interface uses Embassy's asynchronous SPI transfer support.
+The DMA implementation uses Embassy asynchronous SPI transfers.
 
-This separation allows benchmark logic to operate independently of the
-hardware-specific implementation.
+The benchmark engine depends on these transfer interfaces rather than directly
+depending on the hardware implementation.
 
 ---
 
-## Project Structure
+# Cargo Benchmark Modes
+
+The project supports two compile-time benchmark configurations.
+
+## Standard
+
+```bash
+cargo run
+```
+
+Uses:
+
+```text
+1 MHz
+2 MHz
+4 MHz
+8 MHz
+```
+
+and:
+
+```text
+4
+16
+24
+32
+40
+48
+56
+64
+256 bytes
+```
+
+---
+
+## Refined Crossover
+
+```bash
+cargo run --features refined-crossover
+```
+
+Uses:
+
+```text
+4 MHz
+8 MHz
+```
+
+and:
+
+```text
+16
+17
+18
+19
+20
+21
+22
+23
+24 bytes
+```
+
+The original standard benchmark is preserved unchanged while the refined mode
+provides a dedicated experiment for crossover characterization.
+
+---
+
+# Project Structure
 
 ```text
 .
@@ -470,7 +782,9 @@ hardware-specific implementation.
 ├── tools
 │   ├── capture_csv.py
 │   ├── run_experiments.py
-│   └── analyze_results.py
+│   ├── analyze_results.py
+│   ├── analyze_refined_crossover.py
+│   └── plot_refined_crossover.py
 │
 └── results
     ├── benchmark.csv
@@ -481,244 +795,232 @@ hardware-specific implementation.
     │
     ├── runs
     │   ├── benchmark_run_001.csv
-    │   ├── benchmark_run_002.csv
     │   ├── ...
     │   └── benchmark_run_030.csv
     │
-    └── graphs
-        ├── throughput_1mhz.png
-        ├── throughput_2mhz.png
-        ├── throughput_4mhz.png
-        ├── throughput_8mhz.png
-        ├── cycles_1mhz.png
-        ├── cycles_2mhz.png
-        ├── cycles_4mhz.png
-        └── cycles_8mhz.png
+    ├── graphs
+    │   ├── throughput_1mhz.png
+    │   ├── throughput_2mhz.png
+    │   ├── throughput_4mhz.png
+    │   ├── throughput_8mhz.png
+    │   ├── cycles_1mhz.png
+    │   ├── cycles_2mhz.png
+    │   ├── cycles_4mhz.png
+    │   └── cycles_8mhz.png
+    │
+    ├── refined_crossover.csv
+    ├── refined_crossover_table.txt
+    ├── refined_crossover_runs.csv
+    ├── refined_throughput_statistics.csv
+    ├── refined_crossover_statistics.csv
+    ├── refined_paired_difference_statistics.csv
+    │
+    ├── refined_runs
+    │   ├── refined_crossover_run_001.csv
+    │   ├── ...
+    │   └── refined_crossover_run_030.csv
+    │
+    ├── refined_graphs
+    │   ├── throughput_4mhz.png
+    │   ├── throughput_8mhz.png
+    │   ├── cycles_4mhz.png
+    │   └── cycles_8mhz.png
+    │
+    └── refined_statistical_graphs
+        ├── refined_crossover_4mhz.png
+        └── refined_crossover_8mhz.png
 ```
 
 ---
 
-## Main Components
+# Main Components
 
-### `spi.rs`
-
-Responsible for:
-
-- SPI1 configuration
-- blocking SPI transfers
-- asynchronous DMA-backed transfers
-- software chip select
-- runtime SPI frequency configuration
-
-### `benchmark.rs`
+## `spi.rs`
 
 Responsible for:
 
-- repeated transfer execution
-- elapsed-time measurement
-- throughput calculation
-- timing statistics
-- DWT cycle collection
+```text
+SPI1 configuration
+blocking transfers
+DMA-backed asynchronous transfers
+software chip select
+runtime frequency configuration
+```
 
-### `cycle_counter.rs`
-
-Responsible for:
-
-- Cortex-M DWT initialization
-- cycle-counter access
-- elapsed-cycle calculation
-
-### `transfer.rs`
-
-Defines the hardware-independent interfaces used by the benchmark engine.
-
-### `tools/capture_csv.py`
+## `benchmark.rs`
 
 Responsible for:
 
-- launching one complete hardware benchmark
-- capturing RTT output
-- parsing benchmark measurements
-- writing the latest benchmark CSV
-- producing the formatted benchmark table
-- generating throughput graphs
-- generating cycle-count graphs
+```text
+repeated benchmark execution
+elapsed-time measurement
+throughput calculation
+timing statistics
+DWT cycle measurement
+```
 
-### `tools/run_experiments.py`
-
-Responsible for:
-
-- executing multiple independent complete hardware benchmarks
-- accepting a run count from the command line
-- preserving each completed run
-- selecting sequential run numbers automatically
-- preventing previous runs from being overwritten
-- adding each run to the combined repeated-run dataset
-- preserving a `run_id` for each experiment
-
-### `tools/analyze_results.py`
+## `cycle_counter.rs`
 
 Responsible for:
 
-- loading `results/benchmark_runs.csv`
-- validating required CSV fields
-- validating the number of measurements in each run
-- grouping measurements by SPI frequency, method, and payload size
-- calculating mean throughput
-- calculating sample standard deviation
-- calculating two-sided 95% confidence intervals using Student's t distribution
-- detecting blocking-to-DMA crossover intervals independently for each run
-- summarizing crossover consistency
-- exporting throughput statistics
-- exporting crossover statistics
+```text
+DWT initialization
+cycle-counter access
+elapsed-cycle calculation
+```
+
+## `transfer.rs`
+
+Defines the transfer interfaces used by the benchmark engine.
 
 ---
 
-## Benchmark Data
+# Host Tools
 
-### Latest Single Run
+## `tools/capture_csv.py`
 
-The latest benchmark run is stored in:
+Runs one hardware experiment.
 
-```text
-results/benchmark.csv
+Standard mode:
+
+```bash
+python3 tools/capture_csv.py
 ```
 
-A human-readable version is stored in:
+Refined mode:
 
-```text
-results/benchmark_table.txt
+```bash
+python3 tools/capture_csv.py --refined-crossover
 ```
 
-The raw benchmark fields are:
+The refined mode expects exactly:
 
 ```text
-spi_frequency_hz
-method
-payload_bytes
-iterations
-total_bytes
-total_elapsed_us
-total_elapsed_cycles
-average_us
-average_cycles
-min_us
-max_us
-throughput_bytes_per_second
+36 measurements
 ```
+
+An incomplete hardware capture exits with an error so it cannot silently be
+stored as valid research data.
 
 ---
 
-## Repeated Research Dataset
+## `tools/run_experiments.py`
 
-Individual repeated runs are stored under:
+Standard repeated experiment:
+
+```bash
+python3 tools/run_experiments.py 30
+```
+
+Refined repeated experiment:
+
+```bash
+python3 tools/run_experiments.py 30 --refined-crossover
+```
+
+Standard runs are preserved under:
 
 ```text
 results/runs/
 ```
 
-using sequential filenames:
+Refined runs are preserved separately under:
 
 ```text
-benchmark_run_001.csv
-benchmark_run_002.csv
-benchmark_run_003.csv
-...
-benchmark_run_030.csv
+results/refined_runs/
 ```
 
-The combined dataset is stored in:
-
-```text
-results/benchmark_runs.csv
-```
-
-It adds a `run_id` field to the normal benchmark fields:
-
-```text
-run_id,spi_frequency_hz,method,payload_bytes,...
-```
-
-The current repeated dataset contains:
-
-```text
-30 independent runs
-×
-72 configurations
-=
-2,160 benchmark measurements
-```
-
-Preserving the individual run identifier allows variability between independent
-experiments to be analyzed instead of combining all measurements as though
-they came from one benchmark execution.
+This prevents the two experiments from being mixed.
 
 ---
 
-## Throughput Statistics
+## `tools/analyze_results.py`
 
-Repeated-run throughput statistics are exported to:
+Analyzes the original standard repeated-run dataset.
 
-```text
-results/throughput_statistics.csv
-```
-
-Each row represents one benchmark configuration.
-
-The output fields are:
+It calculates:
 
 ```text
-spi_frequency_hz
-method
-payload_bytes
-sample_count
-mean_throughput_bytes_per_second
-standard_deviation_bytes_per_second
-confidence_interval_95_lower_bytes_per_second
-confidence_interval_95_upper_bytes_per_second
+mean throughput
+sample standard deviation
+95% Student's t confidence interval
+crossover consistency
 ```
-
-There are:
-
-```text
-4 frequencies
-×
-9 payload sizes
-×
-2 methods
-=
-72 statistical configurations
-```
-
-Each configuration contains 30 independent measurements.
 
 ---
 
-## Statistical Method
+## `tools/analyze_refined_crossover.py`
 
-For one benchmark configuration, let the repeated throughput measurements be:
-
-```text
-x1, x2, x3, ..., xn
-```
-
-where:
+Analyzes:
 
 ```text
-n = 30
+results/refined_crossover_runs.csv
 ```
 
-### Mean
-
-The arithmetic mean is:
+It performs:
 
 ```text
-x̄ = (x1 + x2 + ... + xn) / n
+dataset validation
+configuration validation
+mean throughput analysis
+sample standard deviation
+95% confidence intervals
+paired DMA − Blocking analysis
+per-run crossover detection
+crossover consistency analysis
+statistically supported DMA threshold detection
 ```
 
-The mean estimates the average measured throughput for that configuration.
+Generated files:
 
-### Sample Standard Deviation
+```text
+results/refined_throughput_statistics.csv
+results/refined_crossover_statistics.csv
+results/refined_paired_difference_statistics.csv
+```
+
+---
+
+## `tools/plot_refined_crossover.py`
+
+Reads:
+
+```text
+results/refined_throughput_statistics.csv
+```
+
+and generates:
+
+```text
+results/refined_statistical_graphs/refined_crossover_4mhz.png
+results/refined_statistical_graphs/refined_crossover_8mhz.png
+```
+
+The graphs show:
+
+```text
+mean throughput
+±
+95% confidence interval
+```
+
+for blocking and DMA transfers.
+
+---
+
+# Statistical Method
+
+For repeated measurements:
+
+```text
+x1, x2, ..., xn
+```
+
+the arithmetic mean is:
+
+```text
+x̄ = Σxi / n
+```
 
 The sample standard deviation is:
 
@@ -726,91 +1028,71 @@ The sample standard deviation is:
 s = sqrt(Σ(xi - x̄)^2 / (n - 1))
 ```
 
-The use of `n - 1` treats the collected runs as a sample of possible repeated
-measurements rather than as the complete population of all possible runs.
-
-### Standard Error
-
-The standard error of the mean is:
+The standard error is:
 
 ```text
 SE = s / sqrt(n)
 ```
 
-### 95% Confidence Interval
-
-The two-sided 95% confidence interval is calculated as:
+The two-sided 95% confidence interval is:
 
 ```text
 x̄ ± t(0.975, n - 1) × SE
 ```
 
-For 30 independent runs:
+For the research datasets:
 
 ```text
 n = 30
 degrees of freedom = 29
 ```
 
-The Student's t distribution is used because the population variance is not
-known and is estimated from a finite sample of repeated hardware runs.
-
-The confidence interval describes uncertainty in the estimated mean throughput.
-
-It is not a guarantee that 95% of individual SPI transfers will lie within the
-reported interval.
+Student's t distribution is used because the population variance is unknown and
+estimated from a finite sample of repeated hardware experiments.
 
 ---
 
-## Crossover Statistics
+# Why Paired Analysis Is Used
 
-Repeated-run crossover statistics are exported to:
+Blocking and DMA measurements from the same hardware run share experimental
+conditions.
 
-```text
-results/crossover_statistics.csv
-```
-
-The fields are:
+Instead of only comparing:
 
 ```text
-spi_frequency_hz
-crossover_lower_bytes
-crossover_upper_bytes
-run_count
-total_runs
-percentage
+mean blocking throughput
 ```
 
-For example, a row containing:
+against:
 
 ```text
-8000000,16,24,...
+mean DMA throughput
 ```
 
-represents runs where blocking was still at least as fast as DMA at 16 bytes,
-while DMA became faster at 24 bytes.
+the refined analysis computes:
 
-If no crossover is detected for a run, the crossover interval is represented
-without lower and upper payload boundaries.
+```text
+DMA_i - Blocking_i
+```
 
-The statistical summary allows crossover stability to be evaluated across the
-30 independent experiments.
+for every independent run.
 
-The measured counts and percentages are kept in
-`results/crossover_statistics.csv` so the repository's reported crossover
-distribution is derived directly from the experiment data.
+This preserves the paired relationship between measurements.
+
+The statistical analysis is then performed on these paired differences.
+
+This allows the crossover decision to be based directly on whether the
+confidence interval for:
+
+```text
+DMA - Blocking
+```
+
+lies above or below zero.
 
 ---
 
-## Generate Results
-
-Install the Python dependencies:
-
-```bash
-sudo apt install python3-matplotlib python3-scipy
-```
-
-### One Hardware Run
+# Generate Standard Results
 
 Run:
 
@@ -818,225 +1100,129 @@ Run:
 python3 tools/capture_csv.py
 ```
 
-The utility runs the firmware through `cargo run`, captures RTT output, and
-regenerates:
+Generated files include:
 
 ```text
 results/benchmark.csv
 results/benchmark_table.txt
-
-results/graphs/throughput_1mhz.png
-results/graphs/throughput_2mhz.png
-results/graphs/throughput_4mhz.png
-results/graphs/throughput_8mhz.png
-
-results/graphs/cycles_1mhz.png
-results/graphs/cycles_2mhz.png
-results/graphs/cycles_4mhz.png
-results/graphs/cycles_8mhz.png
+results/graphs/
 ```
 
----
-
-## Collect Repeated Experiments
-
-Run:
+Collect repeated standard measurements:
 
 ```bash
 python3 tools/run_experiments.py 30
 ```
 
-The argument controls the number of complete independent benchmark runs.
-
-Each run contains all 72 measurement configurations.
-
-Individual runs are preserved as:
-
-```text
-results/runs/benchmark_run_001.csv
-results/runs/benchmark_run_002.csv
-...
-```
-
-The next available run number is selected automatically.
-
-Each completed run is also appended to:
-
-```text
-results/benchmark_runs.csv
-```
-
-with its corresponding `run_id`.
-
----
-
-## Run Statistical Analysis
-
-Run:
+Then analyze:
 
 ```bash
 python3 tools/analyze_results.py
 ```
 
-The analysis pipeline is:
+---
 
-```text
-results/benchmark_runs.csv
-        ↓
-load repeated measurements
-        ↓
-validate required fields
-        ↓
-validate 72 measurements per run
-        ↓
-group matching configurations
-        ↓
-calculate mean throughput
-        ↓
-calculate sample standard deviation
-        ↓
-calculate standard error
-        ↓
-calculate 95% Student's t confidence interval
-        ↓
-detect crossover interval for each run
-        ↓
-summarize crossover consistency
-        ↓
-write statistical result files
+# Generate Refined Crossover Results
+
+Collect the repeated experiment:
+
+```bash
+python3 tools/run_experiments.py 30 --refined-crossover
 ```
 
-Generated outputs:
+This produces:
 
 ```text
-results/throughput_statistics.csv
-results/crossover_statistics.csv
+results/refined_runs/
+results/refined_crossover_runs.csv
 ```
 
-For 30 complete runs, successful loading and validation reports:
+Analyze:
 
-```text
-Loaded 2160 benchmark measurements from 30 independent runs.
-Validated 30 runs with 72 measurements each.
+```bash
+python3 tools/analyze_refined_crossover.py
+```
+
+Generate statistical graphs:
+
+```bash
+python3 tools/plot_refined_crossover.py
 ```
 
 ---
 
-## Build
+# Build
 
-Install the embedded target:
+Install the embedded Rust target:
 
 ```bash
 rustup target add thumbv8m.main-none-eabihf
 ```
 
-Build:
-
-```bash
-cargo build
-```
-
-Build optimized firmware:
+Standard build:
 
 ```bash
 cargo build --release
 ```
 
+Refined build:
+
+```bash
+cargo build --release --features refined-crossover
+```
+
 ---
 
-## Flash and Run
+# Flash and Run
 
-Connect the MM6108-EKH05 through ST-LINK.
-
-Run:
+Standard benchmark:
 
 ```bash
 cargo run
 ```
 
-`probe-rs` flashes the STM32U585 and displays `defmt` output through RTT.
-
-A representative result includes information such as:
-
-```text
-Requested SPI frequency: 8000000 Hz
-Actual SPI frequency: 8000000 Hz
-
-Payload size: 256 bytes
-Iterations: 100
-
-Blocking throughput: 287211 bytes/s
-DMA throughput: 853390 bytes/s
-
-Faster method: DMA
-DMA throughput improvement: 197%
-
-DMA crossover detected between 16 and 24 bytes
-```
-
----
-
-## Release Firmware
-
-Build optimized firmware with:
+Refined crossover benchmark:
 
 ```bash
-cargo build --release
+cargo run --features refined-crossover
 ```
 
-The ELF executable is generated under:
-
-```text
-target/thumbv8m.main-none-eabihf/release/
-```
-
-Firmware release artifacts can include:
-
-```text
-spi-benchmark.elf
-spi-benchmark.bin
-spi-benchmark.hex
-```
-
-The ELF file preserves debugging information.
-
-BIN and HEX files can be used for direct firmware flashing.
-
-Benchmark CSV files can be distributed alongside the firmware when
-reproducibility of the measured results is required.
+`probe-rs` flashes the STM32U585 and displays `defmt` output over RTT.
 
 ---
 
-## Technologies
+# Technologies
 
-- Rust
-- Embedded Rust
-- Embassy
-- STM32U585
-- ARM Cortex-M33
-- SPI
-- DMA
-- Cortex-M DWT
-- asynchronous embedded programming
-- probe-rs
-- ST-LINK
-- defmt
-- RTT
-- Python
-- CSV
-- Python statistics
-- SciPy
-- Matplotlib
-- Git
-- GitHub
+```text
+Rust
+Embedded Rust
+Embassy
+STM32U585
+ARM Cortex-M33
+SPI
+DMA
+Cortex-M DWT
+Async embedded programming
+probe-rs
+ST-LINK
+defmt
+RTT
+Python
+CSV
+Python statistics
+SciPy
+Matplotlib
+Git
+GitHub
+```
 
 ---
 
-## Development Workflow
+# Development Workflow
 
 The project was developed incrementally using feature branches.
 
-Major completed features include:
+Major completed functionality includes:
 
 ```text
 benchmark timing
@@ -1045,64 +1231,86 @@ blocking SPI
 transfer abstraction
 repeated benchmarking
 throughput calculation
-multiple payload sizes
-transfer timing statistics
+payload-size scaling
+transfer statistics
 DMA SPI
 DMA benchmarking
 DMA concurrency testing
 automatic blocking/DMA comparison
 SPI clock scaling
-DMA crossover detection
-DWT core-cycle measurement
+crossover detection
+DWT cycle measurement
 CSV export
 benchmark visualization
-repeated experiment capture
+repeated experiment collection
 combined repeated-run dataset
 dataset validation
 mean throughput analysis
 sample standard deviation analysis
 95% confidence interval analysis
 per-run crossover analysis
-crossover consistency analysis
+refined crossover benchmark
+one-byte crossover resolution
+refined repeated experiments
+paired blocking/DMA analysis
+refined crossover consistency analysis
+statistical crossover visualization
 ```
 
-Each major firmware feature was built and tested on the STM32U585 before being
-merged into `main`.
-
-Research analysis is performed from preserved raw benchmark measurements so
-derived statistical results can be reproduced from the repository data.
+Research measurements are preserved as raw run files so derived results can be
+reproduced from the original experiment data.
 
 ---
 
-## Why This Project
+# Conclusion
 
-This project explores an important embedded-systems engineering question:
+The experiments show that DMA is not inherently faster than blocking SPI for
+every transfer.
 
-> When does the additional complexity of DMA provide a measurable advantage
-> over a simple blocking SPI transfer?
+At small payload sizes, DMA setup and synchronization overhead can outweigh its
+benefits.
 
-DMA is often described as the faster or more efficient approach, but the actual
-trade-off depends on several factors.
+At larger payload sizes, DMA becomes increasingly advantageous.
 
-For small payloads, DMA configuration, synchronization, interrupt handling, and
-software overhead may outweigh the time saved by hardware-assisted transfer.
-
-For larger payloads, especially at higher peripheral frequencies, DMA can
-provide substantially higher throughput while also allowing other asynchronous
-tasks to make progress.
-
-This benchmark measures that transition experimentally rather than assuming a
-fixed answer.
-
-The repeated-run experiment extends the analysis beyond a single measurement by
-quantifying:
+The original benchmark identified the transition between:
 
 ```text
-average performance
-run-to-run variability
-uncertainty in the estimated mean
-blocking-to-DMA crossover consistency
+16 and 24 bytes
 ```
 
-This provides a stronger basis for evaluating when DMA is beneficial on the
-STM32U585 with Embassy-based embedded Rust firmware.
+at 4 MHz and 8 MHz.
+
+The refined experiment narrowed this result to:
+
+```text
+17–18 bytes
+```
+
+at both frequencies.
+
+Across 30 independent refined hardware runs:
+
+```text
+4 MHz:
+17–18 byte crossover
+30/30 runs
+100%
+
+8 MHz:
+17–18 byte crossover
+30/30 runs
+100%
+```
+
+Paired statistical analysis further showed that blocking remained
+significantly faster at 17 bytes, while DMA was significantly faster at
+18 bytes.
+
+Therefore, under the tested STM32U585, Embassy, SPI, clock, and benchmark
+configuration:
+
+> **18 bytes is the first tested payload size with a statistically supported DMA throughput advantage at both 4 MHz and 8 MHz.**
+
+The result demonstrates that the decision to use DMA should be based on
+measured transfer size, bus frequency, software overhead, and concurrency
+requirements rather than on the assumption that DMA is always faster.
